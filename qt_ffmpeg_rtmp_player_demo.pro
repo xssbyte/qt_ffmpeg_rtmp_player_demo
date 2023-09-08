@@ -9,13 +9,13 @@ CONFIG += c++17
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
 
 SOURCES += \
+    FFmpegPlayer.cpp \
     main.cpp \
-    mainwindow.cpp \
-    rtmpPlayer.cpp
+    mainwindow.cpp
 
 HEADERS += \
-    mainwindow.h \
-    rtmpPlayer.h
+    FFmpegPlayer.h \
+    mainwindow.h
 
 FORMS += \
     mainwindow.ui

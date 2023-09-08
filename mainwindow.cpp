@@ -7,10 +7,10 @@
 #include <cstring>
 #include <QDebug>
 #include <QThread>
+#include <QPainter>
 
-
-VideoWidget::VideoWidget(QWidget *parent)
-    : QWidget(parent), m_player(nullptr)
+QPlayerWidget::QPlayerWidget(QWidget *parent) :
+    p_ffmpeg_player(new FFmpegPlayer())
 {
     // Set size and background color
     setFixedSize(800, 600);
@@ -19,35 +19,23 @@ VideoWidget::VideoWidget(QWidget *parent)
     setAutoFillBackground(true);
     setPalette(palette);
 
-
-    QThread* m_playerThread = new QThread;
-    // Create player
-    m_player = new RTMPPlayer(this, nullptr);
-    m_player->moveToThread(m_playerThread);
-    connect(m_player,&RTMPPlayer::sigUpdateUI,this,QOverload<>::of(&VideoWidget::update));
-    connect(m_player, &RTMPPlayer::error, [](const QString &msg) {
-        qWarning() << "Error:" << msg;
+    p_ffmpeg_player->set_preview_callback([&](uint8_t *data,int width,int height){
+        QImage frame_image(data, width, height, QImage::Format_RGBA8888);
+        m_image = frame_image.copy();
+        this->update();
+        qDebug() << "preview_callback";
     });
-
-    m_playerThread->start();
-    //+Q_OBJECT
-    //connect(this, &VideoWidget::sigStartToPlay,m_player ,&RTMPPlayer::start);
-    QMetaObject::invokeMethod(m_player, "start", Qt::QueuedConnection, Q_ARG(QString, "rtmp://192.168.1.180:8080/live/A60010C221062342"));
+    p_ffmpeg_player->start_preview("rtsp://admin:12345@192.168.1.7:8554/0");
 }
-
-void VideoWidget::paintEvent(QPaintEvent *event)
+void QPlayerWidget::paintEvent(QPaintEvent *event)
 {
     QWidget::paintEvent(event);
-
-    if (m_player && m_player->m_started) {
-        // Draw image
+    if (p_ffmpeg_player->m_started) {
         QPainter painter(this);
-        QImage m_image;
-        m_player->getImage(m_image);
         painter.drawImage(rect(), m_image);
+        qDebug() << __FUNCTION__;
     }
 }
-
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -55,7 +43,7 @@ MainWindow::MainWindow(QWidget *parent)
 {
     ui->setupUi(this);
     qDebug() << "FFmpeg version: " << av_version_info();
-    VideoWidget* mVideoWidget = new VideoWidget();
+    QPlayerWidget *mVideoWidget = new QPlayerWidget();
     mVideoWidget->show();
 }
 

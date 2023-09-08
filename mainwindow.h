@@ -2,23 +2,22 @@
 #define MAINWINDOW_H
 
 #include <QMainWindow>
-#include <rtmpPlayer.h>
+#include <FFmpegPlayer.h>
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
 QT_END_NAMESPACE
 
-class VideoWidget : public QWidget
+class QPlayerWidget : public QWidget
 {
 public:
-    VideoWidget(QWidget *parent = nullptr);
-    void sigStartToPlay(const QString& url);
-
+    QPlayerWidget(QWidget *parent = nullptr);
 protected:
-    void paintEvent(QPaintEvent *event) override;
-
+    void paintEvent(QPaintEvent *event);
 private:
-    RTMPPlayer *m_player;
+    std::function<void (uint8_t*/*data*/,int/*w*/,int/*h*/)> preview_callback;
+    std::unique_ptr<FFmpegPlayer> p_ffmpeg_player;
+    QImage m_image;
 };
 
 class MainWindow : public QMainWindow
