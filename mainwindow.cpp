@@ -9,33 +9,52 @@
 #include <QThread>
 #include <QPainter>
 
-QPlayerWidget::QPlayerWidget(QWidget *parent) :
-    p_ffmpeg_player(new FFmpegPlayer())
+QPlayerWidget::QPlayerWidget(QWidget *parent) : QWidget(parent),
+    p_ffmpeg_player(new FFmpegPlayer()), ui(new Ui::MainWindow)
 {
     // Set size and background color
-    setFixedSize(800, 600);
+    setFixedSize(640, 480);
     QPalette palette = this->palette();
     palette.setColor(QPalette::Background, Qt::black);
     setAutoFillBackground(true);
     setPalette(palette);
 
     p_ffmpeg_player->set_preview_callback([&](uint8_t *data,int width,int height){
-        QImage frame_image(data, width, height, QImage::Format_RGBA8888);
-        m_image = frame_image.copy();
-        this->update();
         qDebug() << "preview_callback";
+        if(!frame_avaliable.load())
+        {
+            QImage frame_image(data, width, height, QImage::Format_RGBA8888);
+            m_image = frame_image.copy();
+            this->update();
+        }
+        frame_avaliable.store(true);
     });
-    p_ffmpeg_player->start_preview("rtsp://admin:12345@192.168.1.7:8554/0");
 }
 void QPlayerWidget::paintEvent(QPaintEvent *event)
 {
-    QWidget::paintEvent(event);
-    if (p_ffmpeg_player->m_started) {
-        QPainter painter(this);
-        painter.drawImage(rect(), m_image);
-        qDebug() << __FUNCTION__;
+    qDebug() << __FUNCTION__;
+    if(frame_avaliable.load())
+    {
+        if (p_ffmpeg_player->m_started) {
+            QPainter painter(this);
+            painter.drawImage(rect(), m_image);
+        }
     }
+    frame_avaliable.store(false);
 }
+void QPlayerWidget::start_preview(const std::string &media_url)
+{
+    p_ffmpeg_player->start_preview(media_url);
+}
+void QPlayerWidget::stop_preview()
+{
+    p_ffmpeg_player->stop_preview();
+}
+void QPlayerWidget::set_preview_callback(std::function<void (uint8_t*/*data*/,int/*w*/,int/*h*/)> callback)
+{
+    p_ffmpeg_player->set_preview_callback(callback);
+}
+
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -43,8 +62,12 @@ MainWindow::MainWindow(QWidget *parent)
 {
     ui->setupUi(this);
     qDebug() << "FFmpeg version: " << av_version_info();
-    QPlayerWidget *mVideoWidget = new QPlayerWidget();
-    mVideoWidget->show();
+    QObject::connect(ui->button_start_preview,&QAbstractButton::pressed,ui->player_widget,[&](){
+        ui->player_widget->start_preview("rtsp://192.168.1.106:554/live/stream");
+    });
+    QObject::connect(ui->button_stop_preview,&QAbstractButton::pressed,ui->player_widget,[&](){
+        ui->player_widget->stop_preview();
+    });
 }
 
 MainWindow::~MainWindow()

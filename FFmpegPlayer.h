@@ -4,6 +4,8 @@
 #include <memory>
 #include <thread>
 #include <atomic>
+#include <mutex>
+#include <future>
 #include <functional>
 
 extern "C" {
@@ -22,8 +24,19 @@ public:
     void on_frame(void* frame);
 
 public:
+    /**
+     * @brief start_preview 开始预览，启动ffmpeg解析url
+     * @param media_url 媒体url
+     */
     void start_preview(const std::string &media_url);
+    /**
+     * @brief set_preview_callback 设置预览时的回调，需要在start_preview之前调用
+     * @param callback c++风格的回调函数，每收到一帧，callback都会被调用一次
+     */
     void set_preview_callback(std::function<void (uint8_t*/*data*/,int/*w*/,int/*h*/)> callback);
+    /**
+     * @brief stop_preview 停止预览，清理ffmpeg资源
+     */
     void stop_preview();
 
 private:
@@ -38,8 +51,8 @@ private:
     SwsContext *m_swsCtx;
 
     char local_media_url[128];
-    std::unique_ptr<std::thread> p_bio_player_thread;
-
+    std::future<void> player_future;
+    std::mutex player_lock;
     std::function<void (uint8_t*/*data*/,int/*w*/,int/*h*/)> preview_callback;
     int m_videoStream;
 };
