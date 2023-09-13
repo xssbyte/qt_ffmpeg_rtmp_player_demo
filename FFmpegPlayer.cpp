@@ -15,7 +15,7 @@ FFmpegPlayer::FFmpegPlayer()
 FFmpegPlayer::~FFmpegPlayer()
 {
     m_started = false;
-    if(player_future.valid())
+    if (player_future.valid())
         player_future.get();
     cleanup();
 }
@@ -34,7 +34,9 @@ void FFmpegPlayer::start_preview(const std::string &media_url)
     m_started = true;
 
     memcpy(local_media_url, media_url.data(), media_url.size());
-    // Open input stream
+    player_future = std::async(std::launch::async,
+                               std::bind([&](std::function<void(uint8_t * /*data*/, int /*w*/, int /*h*/)> &preview_callback_internal) {
+                                    // Open input stream
     m_formatCtx = avformat_alloc_context();
     if (!m_formatCtx)
     {
@@ -43,16 +45,13 @@ void FFmpegPlayer::start_preview(const std::string &media_url)
     }
     if (int ret = avformat_open_input(&m_formatCtx, media_url.data(), nullptr, &m_options) < 0)
     {
-
         av_log(NULL, AV_LOG_ERROR, "Failed to open input stream: %s\n", local_media_url);
-        //        av_log(NULL, AV_LOG_ERROR, "Failed during operation: %s\n", av_err2str(ret));
         cleanup();
         return;
     }
     if (int ret = avformat_find_stream_info(m_formatCtx, nullptr) < 0)
     {
         av_log(NULL, AV_LOG_ERROR, "Failed to find stream information: %s\n", local_media_url);
-        //        av_log(NULL, AV_LOG_ERROR, "Failed during operation: %s\n", av_err2str(ret));
         cleanup();
         return;
     }
@@ -119,7 +118,7 @@ void FFmpegPlayer::start_preview(const std::string &media_url)
 
     // Initialize scaler
     m_swsCtx = sws_getContext(m_codecCtx->width, m_codecCtx->height, m_codecCtx->pix_fmt,
-                              m_codecCtx->width, m_codecCtx->height, AV_PIX_FMT_YUVJ420P,
+                              m_codecCtx->width, m_codecCtx->height, AV_PIX_FMT_RGBA,
                               SWS_BILINEAR, nullptr, nullptr, nullptr);
     if (!m_swsCtx)
     {
@@ -127,56 +126,44 @@ void FFmpegPlayer::start_preview(const std::string &media_url)
         cleanup();
         return;
     }
+    while (av_read_frame(m_formatCtx, m_packet) >= 0 && m_started)
+    {
+        if (m_packet->stream_index == m_videoStream)
+        {
+            if (avcodec_send_packet(m_codecCtx, m_packet) >= 0)
+            {
+                while (avcodec_receive_frame(m_codecCtx, m_frame) >= 0)
+                {
+                    // Convert to RGBA
+                    AVFrame *rgbFrame = av_frame_alloc();
+                    if (!rgbFrame)
+                    {
+                        av_log(NULL, AV_LOG_ERROR, "Failed to allocate AVFrame");
+                        av_packet_unref(m_packet);
+                        return;
+                    }
+                    rgbFrame->width = m_codecCtx->width;
+                    rgbFrame->height = m_codecCtx->height;
+                    rgbFrame->format = AV_PIX_FMT_RGBA;
+                    if (av_frame_get_buffer(rgbFrame, 0) < 0)
+                    {
+                        av_log(NULL, AV_LOG_ERROR, "Failed to allocate RGB buffer");
+                        av_frame_free(&rgbFrame);
+                        av_packet_unref(m_packet);
+                        return;
+                    }
+                    sws_scale(m_swsCtx, m_frame->data, m_frame->linesize, 0, m_codecCtx->height,
+                              rgbFrame->data, rgbFrame->linesize);
+                    // Callback
+                    preview_callback_internal(rgbFrame->data[0], m_codecCtx->width, m_codecCtx->height);
 
-    player_future = std::async(std::launch::async,
-                               std::bind([&](std::function<void(uint8_t * /*data*/, int /*w*/, int /*h*/)> &preview_callback_internal)
-                                         {
-                   while(av_read_frame(m_formatCtx, m_packet) >= 0 && m_started){
-                       if (m_packet->stream_index == m_videoStream) {
-                           if (avcodec_send_packet(m_codecCtx, m_packet) >= 0) {
-                               while (avcodec_receive_frame(m_codecCtx, m_frame) >= 0) {
-                                   // Scale frame
-                                   sws_scale(m_swsCtx, m_frame->data, m_frame->linesize, 0, m_codecCtx->height,
-                                             m_frame->data, m_frame->linesize);
-
-                                   // Convert to RGBA
-                                   AVFrame *rgbFrame = av_frame_alloc();
-                                   if (!rgbFrame) {
-                                       av_log(NULL, AV_LOG_ERROR, "Failed to allocate AVFrame");
-                                       av_packet_unref(m_packet);
-                                       return;
-                                   }
-                                   rgbFrame->width = m_codecCtx->width;
-                                   rgbFrame->height = m_codecCtx->height;
-                                   rgbFrame->format = AV_PIX_FMT_RGBA;
-                                   if (av_frame_get_buffer(rgbFrame, 0) < 0) {
-                                       av_log(NULL, AV_LOG_ERROR, "Failed to allocate RGB buffer");
-                                       av_frame_free(&rgbFrame);
-                                       av_packet_unref(m_packet);
-                                       return;
-                                   }
-                                   SwsContext *rgbSwsCtx = sws_getContext(m_codecCtx->width, m_codecCtx->height, m_codecCtx->pix_fmt,
-                                                                         m_codecCtx->width, m_codecCtx->height, AV_PIX_FMT_RGBA,
-                                                                         SWS_BILINEAR, nullptr, nullptr, nullptr);
-                                   if (!rgbSwsCtx) {
-                                       av_log(NULL, AV_LOG_ERROR, "Failed to initialize scaler");
-                                       av_frame_free(&rgbFrame);
-                                       av_packet_unref(m_packet);
-                                       return;
-                                   }
-                                   sws_scale(rgbSwsCtx, m_frame->data, m_frame->linesize, 0, m_codecCtx->height,
-                                             rgbFrame->data, rgbFrame->linesize);
-                                   sws_freeContext(rgbSwsCtx);
-
-                                   // Callback
-                                   preview_callback_internal(rgbFrame->data[0], m_codecCtx->width, m_codecCtx->height);
-
-                                   av_frame_free(&rgbFrame);
-                               }
-                           }
-                       }
-                       av_packet_unref(m_packet);
-                   } },
+                    av_frame_free(&rgbFrame);
+                }
+            }
+        }
+        av_packet_unref(m_packet);
+    }
+                               },
                                          std::ref(preview_callback)));
 }
 
@@ -184,11 +171,10 @@ void FFmpegPlayer::stop_preview()
 {
     std::lock_guard<std::mutex> lk(player_lock);
     if (!m_started)
-    {
         return;
-    }
     m_started = false;
-    player_future.get();
+    if (player_future.valid())
+        player_future.get();
 
     cleanup();
 }

@@ -10,11 +10,14 @@ CONFIG += c++17
 
 SOURCES += \
     FFmpegPlayer.cpp \
+    QPlayerWidget.cpp \
     main.cpp \
     mainwindow.cpp
 
 HEADERS += \
     FFmpegPlayer.h \
+    QGLPlayerWidget.h \
+    QPlayerWidget.h \
     mainwindow.h
 
 FORMS += \

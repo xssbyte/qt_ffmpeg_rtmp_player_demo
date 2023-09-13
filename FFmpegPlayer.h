@@ -21,7 +21,6 @@ public:
     ~FFmpegPlayer();
 public:
     std::atomic_bool m_started;
-    void on_frame(void* frame);
 
 public:
     /**
