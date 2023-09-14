@@ -40,7 +40,6 @@ public:
 
 private:
     void cleanup();
-    void reconnect();
 
     AVFormatContext *m_formatCtx;
     AVCodecContext *m_codecCtx;
@@ -49,7 +48,6 @@ private:
     AVPacket *m_packet;
     SwsContext *m_swsCtx;
 
-    char local_media_url[128];
     std::future<void> player_future;
     std::mutex player_lock;
     std::function<void (uint8_t*/*data*/,int/*w*/,int/*h*/)> preview_callback;

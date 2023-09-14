@@ -10,6 +10,7 @@
 #include <QThread>
 #include <QPainter>
 #include <QWidget>
+
 #include <FFmpegPlayer.h>
 
 /**
@@ -28,7 +29,6 @@ public:
 public slots:
     void start_preview(const std::string &media_url);
     void stop_preview();
-    void set_preview_callback(std::function<void (uint8_t*/*data*/,int/*w*/,int/*h*/)> callback);
 protected:
     void paintEvent(QPaintEvent *event);
 private:

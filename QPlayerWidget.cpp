@@ -13,26 +13,24 @@ QPlayerWidget::QPlayerWidget(QWidget *parent) : QWidget(parent),
 
     p_ffmpeg_player->set_preview_callback([&](uint8_t *data,int width,int height){
         qDebug() << "preview_callback";
-        if(!frame_avaliable.load())
+        if(!frame_avaliable.load(std::memory_order_acquire))
         {
             QImage frame_image(data, width, height, QImage::Format_RGBA8888);
             m_image = frame_image.copy();
             this->update();
         }
-        frame_avaliable.store(true);
+        frame_avaliable.store(true, std::memory_order_release);
     });
 }
 void QPlayerWidget::paintEvent(QPaintEvent *event)
 {
     qDebug() << __FUNCTION__;
-    if(frame_avaliable.load())
+    if(frame_avaliable.load(std::memory_order_acquire))
     {
-        if (p_ffmpeg_player->m_started) {
-            QPainter painter(this);
-            painter.drawImage(rect(), m_image);
-        }
+        QPainter painter(this);
+        painter.drawImage(rect(), m_image);
     }
-    frame_avaliable.store(false);
+    frame_avaliable.store(false, std::memory_order_release);
 }
 void QPlayerWidget::start_preview(const std::string &media_url)
 {
@@ -41,8 +39,4 @@ void QPlayerWidget::start_preview(const std::string &media_url)
 void QPlayerWidget::stop_preview()
 {
     p_ffmpeg_player->stop_preview();
-}
-void QPlayerWidget::set_preview_callback(std::function<void (uint8_t*/*data*/,int/*w*/,int/*h*/)> callback)
-{
-    p_ffmpeg_player->set_preview_callback(callback);
 }
