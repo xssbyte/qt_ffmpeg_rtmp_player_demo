@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>906</width>
-    <height>627</height>
+    <width>850</width>
+    <height>626</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -108,7 +108,7 @@
     </widget>
     <widget class="QGLPlayerWidget" name="gl_player_widget">
      <attribute name="title">
-      <string>gl_player_widget(TODO)</string>
+      <string>gl_player_widget</string>
      </attribute>
     </widget>
    </widget>
@@ -118,7 +118,7 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>906</width>
+     <width>850</width>
      <height>22</height>
     </rect>
    </property>

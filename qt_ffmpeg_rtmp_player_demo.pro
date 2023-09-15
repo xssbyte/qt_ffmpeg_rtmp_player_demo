@@ -29,6 +29,7 @@ else: unix:!android: target.path = /opt/$${TARGET}/bin
 !isEmpty(target.path): INSTALLS += target
 
 LIBS += -L$$PWD/../ffmpeg-master-latest-win64-gpl-shared/lib/ -lavutil -lavformat -lavcodec -lswscale
+LIBS += -lopengl32  -lGLU32
 
 INCLUDEPATH += $$PWD/../ffmpeg-master-latest-win64-gpl-shared/include
 DEPENDPATH += $$PWD/../ffmpeg-master-latest-win64-gpl-shared/include

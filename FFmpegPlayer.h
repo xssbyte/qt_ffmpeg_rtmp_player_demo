@@ -13,7 +13,11 @@ extern "C" {
 #include <libavformat/avformat.h>
 #include <libswscale/swscale.h>
 }
-
+/**
+ * @brief The FFmpegPlayer class
+ * 可以通过继承FFmpegPlayer并重写回调的方式来获取回调
+ * 也可以实例化FFmpegPlayer，使用set_preview_callback设置回调
+ */
 class FFmpegPlayer
 {
 public:
@@ -24,7 +28,7 @@ public:
 
 public:
     /**
-     * @brief start_preview 开始预览，启动ffmpeg解析url
+     * @brief start_preview 开始异步任务，启动ffmpeg解析url
      * @param media_url 媒体url
      */
     void start_preview(const std::string &media_url);
@@ -34,9 +38,14 @@ public:
      */
     void set_preview_callback(std::function<void (uint8_t*/*data*/,int/*w*/,int/*h*/)> callback);
     /**
-     * @brief stop_preview 停止预览，清理ffmpeg资源
+     * @brief stop_preview 停止预览，清理ffmpeg资源，同步等待播放线程结束
      */
     void stop_preview();
+protected:
+    virtual void on_new_frame_avaliable(uint8_t* data,int w,int h);
+    virtual void on_start_preview(const std::string& url);
+    virtual void on_stop_preview(const std::string& url);
+    virtual void on_ffmpeg_error();
 
 private:
     void cleanup();
@@ -50,7 +59,7 @@ private:
 
     std::future<void> player_future;
     std::mutex player_lock;
-    std::function<void (uint8_t*/*data*/,int/*w*/,int/*h*/)> preview_callback;
+    std::function<void (uint8_t*/*data*/,int/*w*/,int/*h*/)> preview_callback = nullptr;
     int m_videoStream;
 };
 
