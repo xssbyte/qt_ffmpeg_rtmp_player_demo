@@ -10,6 +10,8 @@
 #include <functional>
 #include <QImage>
 
+#include <GL/gl.h>
+
 class QGLPlayerWidget : public QOpenGLWidget, protected QOpenGLFunctions, public FFmpegPlayer
 {
     Q_OBJECT
@@ -18,12 +20,17 @@ public:
     QGLPlayerWidget(QWidget *parent = nullptr)
         : QOpenGLWidget(parent)
     {
-        image = QImage(640, 480, QImage::Format_RGBA8888);
+//        image = QImage(640, 360, QImage::Format_RGBA8888);
 
-        image.fill(Qt::blue);
+//        image.fill(Qt::blue);
 
-        videoFrameData = image.bits();
+//        videoFrameData = image.bits();
+        videoFrameData = (uint8_t *)malloc(640* 360 *4);
     }
+    ~QGLPlayerWidget(){
+        free(videoFrameData);
+    };
+
 public slots:
     void start_preview(const std::string &media_url)
     {
@@ -57,9 +64,13 @@ public slots:
     void paintGL() override
     {
         qDebug() << "paintGL";
+        if(frame_avaliable.load(std::memory_order_acquire))
+        {
+
+
 
         // 渲染帧数据到纹理
-        glClear(GL_COLOR_BUFFER_BIT);
+//        glClear(GL_COLOR_BUFFER_BIT);
 
         // 使用互斥锁保护纹理数据
         glBindTexture(GL_TEXTURE_2D, textureID);
@@ -72,19 +83,26 @@ public slots:
         glTexCoord2f(1.0, 1.0); glVertex2f(1.0, 1.0);
         glTexCoord2f(0.0, 1.0); glVertex2f(-1.0, 1.0);
         glEnd();
+        }
+        frame_avaliable.store(false, std::memory_order_release);
     }
 
 public slots:
 protected:
     void on_new_frame_avaliable(uint8_t* data,int w,int h) override
     {
-//        width = w;
-//        height = h;
-        width = 640;
-        height = 480;
-///       videoFrameData = data;
+        width = w;
+        height = h;
+//        videoFrameData = data;
+        if(!frame_avaliable.load(std::memory_order_acquire))
+        {
+            memcpy(videoFrameData, data, w*h*4);
+            this->update();
+        }
+        frame_avaliable.store(true, std::memory_order_release);
+
         QMetaObject::invokeMethod(this, "update", Qt::BlockingQueuedConnection);
-        qDebug() << "on_new_frame_avaliable";
+        qDebug() << "on_new_frame_avaliable" << w << h;
     }
     void on_start_preview(const std::string& url) override
     {
@@ -102,9 +120,10 @@ protected:
 private:
     GLuint textureID;
     int width = 640;
-    int height = 480;
+    int height = 360;
     uint8_t* videoFrameData = nullptr;
     QImage image;
+    std::atomic_bool frame_avaliable = false;
 };
 
 #endif // QGLPLAYERWIDGET_H
