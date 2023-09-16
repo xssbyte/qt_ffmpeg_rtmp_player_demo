@@ -14,9 +14,8 @@ extern "C" {
 #include <libswscale/swscale.h>
 }
 /**
- * @brief The FFmpegPlayer class
- * 可以通过继承FFmpegPlayer并重写回调的方式来获取回调
- * 也可以实例化FFmpegPlayer，使用set_preview_callback设置回调
+ * @brief FFmpeg 播放器类，单生产者单消费者
+ * 子类需要继承FFmpegPlayer并重写回调
  */
 class FFmpegPlayer
 {
@@ -33,19 +32,37 @@ public:
      */
     void start_preview(const std::string &media_url);
     /**
-     * @brief set_preview_callback 设置预览时的回调，需要在start_preview之前调用
-     * @param callback c++风格的回调函数，每收到一帧，callback都会被调用一次
-     */
-    void set_preview_callback(std::function<void (uint8_t*/*data*/,int/*w*/,int/*h*/)> callback);
-    /**
      * @brief stop_preview 停止预览，清理ffmpeg资源，同步等待播放线程结束
      */
     void stop_preview();
+
+
 protected:
-    virtual void on_new_frame_avaliable(uint8_t* data,int w,int h);
-    virtual void on_start_preview(const std::string& url);
-    virtual void on_stop_preview(const std::string& url);
+    //播放线程启动成功回调
+    virtual void on_start_preview(const std::string& media_url);
+    //新的帧可用回调，不传入帧的数据，帧使用原子量同步
+    virtual void on_new_frame_avaliable();
+    //播放线程关闭成功回调
+    virtual void on_stop_preview(const std::string& media_url);
+    //播放线程错误回调
     virtual void on_ffmpeg_error();
+
+    class FrameCache
+    {
+    public:
+        FrameCache()
+        {
+            m_cache = av_frame_alloc();
+        };
+        ~FrameCache()
+        {
+            av_frame_free(&m_cache);
+        }
+        AVFrame *m_cache;
+    };
+    //单生产者单消费者模型，可以使用原子量同步并避免memcpy
+    std::atomic_bool frame_consumed = true;
+    std::unique_ptr<FrameCache> m_frame_cache;
 
 private:
     void cleanup();
@@ -59,7 +76,6 @@ private:
 
     std::future<void> player_future;
     std::mutex player_lock;
-    std::function<void (uint8_t*/*data*/,int/*w*/,int/*h*/)> preview_callback = nullptr;
     int m_videoStream;
 };
 

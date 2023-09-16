@@ -1,7 +1,6 @@
 #include "QPlayerWidget.h"
 
-QPlayerWidget::QPlayerWidget(QWidget *parent) : QWidget(parent),
-    p_ffmpeg_player(new FFmpegPlayer())
+QPlayerWidget::QPlayerWidget(QWidget *parent) : QWidget(parent)
 {
     // Set size and background color
     qDebug() << "FFmpeg version: " << av_version_info();
@@ -10,33 +9,31 @@ QPlayerWidget::QPlayerWidget(QWidget *parent) : QWidget(parent),
     palette.setColor(QPalette::Background, Qt::black);
     setAutoFillBackground(true);
     setPalette(palette);
-
-    p_ffmpeg_player->set_preview_callback([&](uint8_t *data,int width,int height){
-        qDebug() << "preview_callback";
-        if(!frame_avaliable.load(std::memory_order_acquire))
-        {
-            QImage frame_image(data, width, height, QImage::Format_RGBA8888);
-            m_image = frame_image.copy();
-            this->update();
-        }
-        frame_avaliable.store(true, std::memory_order_release);
-    });
 }
 void QPlayerWidget::paintEvent(QPaintEvent *event)
 {
     qDebug() << __FUNCTION__;
-    if(frame_avaliable.load(std::memory_order_acquire))
+    if(!FFmpegPlayer::frame_consumed.load(std::memory_order_acquire))
     {
         QPainter painter(this);
+        QImage frame_image(m_frame_cache->m_cache->data[0],
+                m_frame_cache->m_cache->width,
+                m_frame_cache->m_cache->height,
+                QImage::Format_RGBA8888);
+        m_image = frame_image.copy();
         painter.drawImage(rect(), m_image);
+        FFmpegPlayer::frame_consumed.store(true, std::memory_order_release);
     }
-    frame_avaliable.store(false, std::memory_order_release);
 }
 void QPlayerWidget::start_preview(const std::string &media_url)
 {
-    p_ffmpeg_player->start_preview(media_url);
+    FFmpegPlayer::start_preview(media_url);
 }
 void QPlayerWidget::stop_preview()
 {
-    p_ffmpeg_player->stop_preview();
+    FFmpegPlayer::stop_preview();
+}
+void QPlayerWidget::on_new_frame_avaliable()
+{
+    this->update();
 }

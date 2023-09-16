@@ -26,19 +26,14 @@ FFmpegPlayer::~FFmpegPlayer()
         player_future.get();
     cleanup();
 }
-void FFmpegPlayer::set_preview_callback(std::function<void(uint8_t * /*data*/, int /*w*/, int /*h*/)> callback)
-{
-    std::lock_guard<std::mutex> lk(player_lock);
-    preview_callback = std::move(callback);
-}
+
 void FFmpegPlayer::start_preview(const std::string &media_url)
 {
     std::lock_guard<std::mutex> lk(player_lock);
     bool expected = false;
     if(!m_started.compare_exchange_strong(expected, true, std::memory_order_release, std::memory_order_relaxed))
         return;
-    player_future = std::async(std::launch::async,
-                               std::bind([&, media_url](std::function<void(uint8_t * /*data*/, int /*w*/, int /*h*/)> &preview_callback_internal) {
+    player_future = std::async(std::launch::async,[&, media_url]() {
                                     // Open input stream
     std::string local_media_url = media_url;
     on_start_preview(local_media_url);
@@ -143,32 +138,33 @@ void FFmpegPlayer::start_preview(const std::string &media_url)
                 {
                     while (avcodec_receive_frame(m_codecCtx, m_frame) >= 0)
                     {
-                        // Convert to RGBA
-                        AVFrame *rgbFrame = av_frame_alloc();
-                        if (!rgbFrame)
+                        // producer
+                        if(frame_consumed.load(std::memory_order_acquire))
                         {
-                            av_log(NULL, AV_LOG_ERROR, "Failed to allocate AVFrame");
-                            av_packet_unref(m_packet);
-                            cleanup();
-                            return;
-                        }
-                        rgbFrame->width = m_codecCtx->width;
-                        rgbFrame->height = m_codecCtx->height;
-                        rgbFrame->format = AV_PIX_FMT_RGBA;
-                        if (av_frame_get_buffer(rgbFrame, 0) < 0)
-                        {
-                            av_log(NULL, AV_LOG_ERROR, "Failed to allocate RGB buffer");
-                            av_frame_free(&rgbFrame);
-                            av_packet_unref(m_packet);
-                            cleanup();
-                            return;
-                        }
-                        sws_scale(m_swsCtx, m_frame->data, m_frame->linesize, 0, m_codecCtx->height,
-                                  rgbFrame->data, rgbFrame->linesize);
-                        // Callback
-                        on_new_frame_avaliable(rgbFrame->data[0], m_codecCtx->width, m_codecCtx->height);
+                            m_frame_cache.reset(new FrameCache());
+                            if (!m_frame_cache->m_cache)
+                            {
+                                av_log(NULL, AV_LOG_ERROR, "Failed to allocate AVFrame");
+                                av_packet_unref(m_packet);
+                                cleanup();
+                                return;
+                            }
+                            m_frame_cache->m_cache->width = m_codecCtx->width;
+                            m_frame_cache->m_cache->height = m_codecCtx->height;
+                            m_frame_cache->m_cache->format = AV_PIX_FMT_RGBA;
+                            if (av_frame_get_buffer(m_frame_cache->m_cache, 0) < 0)
+                            {
+                                av_log(NULL, AV_LOG_ERROR, "Failed to allocate RGB buffer");
+                                av_packet_unref(m_packet);
+                                cleanup();
+                                return;
+                            }
+                            sws_scale(m_swsCtx, m_frame->data, m_frame->linesize, 0, m_codecCtx->height,
+                                      m_frame_cache->m_cache->data, m_frame_cache->m_cache->linesize);
 
-                        av_frame_free(&rgbFrame);
+                            frame_consumed.store(false, std::memory_order_release);
+                            on_new_frame_avaliable();
+                        }
                     }
                 }
             }
@@ -177,12 +173,10 @@ void FFmpegPlayer::start_preview(const std::string &media_url)
         else
         {
             av_packet_unref(m_packet);
-            on_stop_preview(local_media_url);
             return;
         }
     }
-                               },
-                                         std::ref(preview_callback)));
+                               });
 }
 
 void FFmpegPlayer::stop_preview()
@@ -195,16 +189,10 @@ void FFmpegPlayer::stop_preview()
         player_future.get();
     cleanup();
 }
-
-void FFmpegPlayer::on_new_frame_avaliable(uint8_t* data,int w,int h)
-{
-    if(preview_callback)
-        preview_callback(data, w, h);
-}
-void FFmpegPlayer::on_start_preview(const std::string& url){};
-void FFmpegPlayer::on_stop_preview(const std::string& url){};
+void FFmpegPlayer::on_start_preview(const std::string& media_url){};
+void FFmpegPlayer::on_new_frame_avaliable(){};
+void FFmpegPlayer::on_stop_preview(const std::string& media_url){};
 void FFmpegPlayer::on_ffmpeg_error(){};
-
 void FFmpegPlayer::cleanup()
 {
     // Free resources

@@ -15,13 +15,12 @@
 
 /**
  * @brief The QPlayerWidget class
- * 继承QWidget，使用qt框架的UI更新事件。先转为QImage，然后通过调用update()实现刷新上屏
- * 这种做法实现最简单，对事件循环压力比较大，每一帧都需要同步更新UI，帧率等于视频帧率
- * 不适合预览，但是适合做取帧和抽帧
- * 对于预览，最好的方案是使用ffmpeg+opengl主动控制上屏，这种做法不依赖于qt的事件循环
+ * Qt对于普通QWidget，只能使用异步绘制到主线程，缓存一帧至少有一次memcpy，如果要实现同步绘制，只能使用QOpenGLWidget
+ * QPlayerWidget继承QWidget，使用qt框架的UI更新事件。先转为QImage，然后通过调用update()实现刷新上屏
+ * 实现简单，有一次拷贝QImage的开销，对事件循环压力大，不适合预览，但是适合做取帧和抽帧
  */
 
-class QPlayerWidget : public QWidget
+class QPlayerWidget : public QWidget, protected FFmpegPlayer
 {
     Q_OBJECT
 public:
@@ -30,11 +29,10 @@ public slots:
     void start_preview(const std::string &media_url);
     void stop_preview();
 protected:
-    void paintEvent(QPaintEvent *event);
+    void paintEvent(QPaintEvent *event) override;
+
+    void on_new_frame_avaliable() override;
 private:
-    std::function<void (uint8_t*/*data*/,int/*w*/,int/*h*/)> preview_callback;
-    std::unique_ptr<FFmpegPlayer> p_ffmpeg_player;
-    std::atomic_bool frame_avaliable = false;
     QImage m_image;
 };
 
