@@ -4,7 +4,6 @@ QPlayerWidget::QPlayerWidget(QWidget *parent) : QWidget(parent)
 {
     // Set size and background color
     qDebug() << "FFmpeg version: " << av_version_info();
-    setFixedSize(640, 480);
     QPalette palette = this->palette();
     palette.setColor(QPalette::Background, Qt::black);
     setAutoFillBackground(true);

@@ -66,12 +66,21 @@ void FFmpegPlayer::start_preview(const std::string &media_url)
             m_videoStream = i;
             break;
         }
+        if (m_formatCtx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_AUDIO)
+        {
+            m_audioStream = i;
+            break;
+        }
     }
     if (m_videoStream == -1)
     {
         av_log(NULL, AV_LOG_ERROR, "Failed to find video stream: %s\n", local_media_url.data());
         cleanup();
         return;
+    }
+    if (m_audioStream == -1)
+    {
+        av_log(NULL, AV_LOG_WARNING, "Failed to find audio stream: %s\n", local_media_url.data());
     }
 
     // Get codec context
@@ -173,6 +182,7 @@ void FFmpegPlayer::start_preview(const std::string &media_url)
         else
         {
             av_packet_unref(m_packet);
+            on_stop_preview(local_media_url);
             return;
         }
     }

@@ -27,17 +27,17 @@ void QGLPlayerWidget::resizeGL(int w, int h)
 void QGLPlayerWidget::paintGL()
 {
     qDebug() << __FUNCTION__;
-//    glClear(GL_COLOR_BUFFER_BIT);
     if(!FFmpegPlayer::frame_consumed.load(std::memory_order_acquire))
     {
-        if(textureID == 0)
+        if(init_texture_flag.load(std::memory_order_acquire))
         {
             // 创建纹理对象
             glGenTextures(1, &textureID);
             glBindTexture(GL_TEXTURE_2D, textureID);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, m_frame_cache->m_cache->width, m_frame_cache->m_cache->height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            init_texture_flag.store(false, std::memory_order_release);
         }
         glClear(GL_COLOR_BUFFER_BIT);
         glBindTexture(GL_TEXTURE_2D, textureID);
@@ -59,4 +59,13 @@ void QGLPlayerWidget::paintGL()
 void QGLPlayerWidget::on_new_frame_avaliable()
 {
     this->update();
+}
+void QGLPlayerWidget::on_start_preview([[maybe_unused]]const std::string& media_url)
+{
+    init_texture_flag.store(true, std::memory_order_release);
+}
+
+void QGLPlayerWidget::on_stop_preview([[maybe_unused]]const std::string& media_url)
+{
+    init_texture_flag.store(false, std::memory_order_release);
 }

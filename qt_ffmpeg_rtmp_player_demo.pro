@@ -1,4 +1,4 @@
-QT       += core gui opengl
+QT       += core gui opengl multimedia
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
 CONFIG += c++17
@@ -16,6 +16,7 @@ SOURCES += \
 
 HEADERS += \
     FFmpegPlayer.h \
+    QAudioPlayer.h \
     QGLPlayerWidget.h \
     QPlayerWidget.h \
     mainwindow.h

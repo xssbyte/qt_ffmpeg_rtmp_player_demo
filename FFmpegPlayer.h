@@ -77,6 +77,7 @@ private:
     std::future<void> player_future;
     std::mutex player_lock;
     int m_videoStream;
+    int m_audioStream;
 };
 
 #endif // FFMPEGPLAYER_H
