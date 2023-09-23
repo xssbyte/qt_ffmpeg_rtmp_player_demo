@@ -11,6 +11,7 @@ DEFINES += USE_WINDOWS_MULTIMEDIA
 
 SOURCES += \
     FFmpegPlayer.cpp \
+    QAudioPlayer.cpp \
     QGLPlayerWidget.cpp \
     QPlayerWidget.cpp \
     main.cpp \
@@ -18,6 +19,7 @@ SOURCES += \
 
 HEADERS += \
     FFmpegPlayer.h \
+    QAudioPlayer.h \
     QGLPlayerWidget.h \
     QIORingBuffer.h \
     QPlayerWidget.h \

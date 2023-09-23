@@ -15,9 +15,12 @@ extern "C" {
 #include <libswresample/swresample.h>
 }
 /**
- * @brief FFmpeg 播放器类，单生产者单消费者
- * 子类需要继承FFmpegPlayer并重写回调
- */
+* @brief         FFmpegPlayer class
+* FFmpeg 播放器类，单生产者单消费者
+* 子类需要继承FFmpegPlayer并重写回调
+* @author        Samuel<13321133339@163.com>
+* @date          2023/09/23
+*/
 class FFmpegPlayer
 {
 public:
@@ -65,7 +68,6 @@ protected:
 
     //单生产者单消费者模型，可以使用原子量同步并避免memcpy
     std::atomic_bool frame_consumed = true;
-    std::atomic_bool audio_frame_consumed = true;
     std::unique_ptr<FrameCache> m_frame_cache;
     std::shared_ptr<FrameCache> m_audio_frame_cache;
 private:
@@ -74,7 +76,7 @@ private:
     AVFormatContext *m_formatCtx;
     AVCodecContext *m_codecCtx, *m_audioCodecCtx;
     AVDictionary *m_options;
-    AVFrame *m_frame, *m_audioFrame, *m_audioFrameResampled;
+    AVFrame *m_frame, *m_audioFrame;
     AVPacket *m_packet;
     SwsContext *m_swsCtx;
     SwrContext *m_swrCtx;

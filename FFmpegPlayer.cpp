@@ -1,7 +1,9 @@
 #include <FFmpegPlayer.h>
 
-void console_log_callback(void *avcl, int level, const char *fmt, va_list vl) {
-    if (level > av_log_get_level()) return;
+void console_log_callback(void *avcl, int level, const char *fmt, va_list vl)
+{
+    if (level > av_log_get_level())
+        return;
     vfprintf(stderr, fmt, vl);
     fflush(stderr);
 }
@@ -31,9 +33,10 @@ void FFmpegPlayer::start_preview(const std::string &media_url)
 {
     std::lock_guard<std::mutex> lk(player_lock);
     bool expected = false;
-    if(!m_started.compare_exchange_strong(expected, true, std::memory_order_release, std::memory_order_relaxed))
+    if (!m_started.compare_exchange_strong(expected, true, std::memory_order_release, std::memory_order_relaxed))
         return;
-    player_future = std::async(std::launch::async,[&, media_url]() {
+    player_future = std::async(std::launch::async, [&, media_url]()
+                               {
                                     // Open input stream
     std::string local_media_url = media_url;
     on_start_preview(local_media_url);
@@ -166,8 +169,7 @@ void FFmpegPlayer::start_preview(const std::string &media_url)
             return;
         }
         m_audioFrame = av_frame_alloc();
-        m_audioFrameResampled = av_frame_alloc();
-        if (!m_audioFrame || !m_audioFrameResampled)
+        if (!m_audioFrame)
         {
             av_log(NULL, AV_LOG_ERROR, "Failed to allocate audio AVFrame");
             cleanup();
@@ -182,8 +184,6 @@ void FFmpegPlayer::start_preview(const std::string &media_url)
         }
         AVChannelLayout outChannelLayout = AV_CHANNEL_LAYOUT_STEREO;
         outChannelLayout.nb_channels = 2;
-        m_audioFrameResampled->ch_layout = outChannelLayout;
-        m_audioFrameResampled->nb_samples = 2048;
         if (swr_alloc_set_opts2(&m_swrCtx, &outChannelLayout, AV_SAMPLE_FMT_S16, 48000,
                     &(m_audioCodecCtx->ch_layout), m_audioCodecCtx->sample_fmt, m_audioCodecCtx->sample_rate, 0, NULL) != 0)
         {
@@ -255,26 +255,22 @@ void FFmpegPlayer::start_preview(const std::string &media_url)
                 {
                     while (avcodec_receive_frame(m_audioCodecCtx, m_audioFrame) >= 0)
                     {
-//                        if(audio_frame_consumed.load(std::memory_order_acquire))
-//                        {
-                            m_audio_frame_cache.reset(new FrameCache());
-                            m_audio_frame_cache->m_cache->format = AV_SAMPLE_FMT_S16;
-                            AVChannelLayout outChannelLayout = AV_CHANNEL_LAYOUT_STEREO;
-                            outChannelLayout.nb_channels = 2;
-                            m_audio_frame_cache->m_cache->ch_layout = outChannelLayout;
-                            m_audio_frame_cache->m_cache->nb_samples = m_audioFrame->nb_samples;
-                            if (av_frame_get_buffer(m_audio_frame_cache->m_cache, 0) < 0)
-                            {
-                                av_log(NULL, AV_LOG_ERROR, "Failed to allocate audio buffer");
-                                av_packet_unref(m_packet);
-                                cleanup();
-                                return;
-                            }
-                            swr_convert(m_swrCtx, m_audio_frame_cache->m_cache->data, m_audio_frame_cache->m_cache->nb_samples,
-                                        (const uint8_t **)m_audioFrame->data, m_audioFrame->nb_samples);
-                            on_new_audio_frame_avaliable(m_audio_frame_cache);
-//                            audio_frame_consumed.store(false, std::memory_order_release);
-//                        }
+                        m_audio_frame_cache.reset(new FrameCache());
+                        m_audio_frame_cache->m_cache->format = AV_SAMPLE_FMT_S16;
+                        AVChannelLayout outChannelLayout = AV_CHANNEL_LAYOUT_STEREO;
+                        outChannelLayout.nb_channels = 2;
+                        m_audio_frame_cache->m_cache->ch_layout = outChannelLayout;
+                        m_audio_frame_cache->m_cache->nb_samples = m_audioFrame->nb_samples;
+                        if (av_frame_get_buffer(m_audio_frame_cache->m_cache, 0) < 0)
+                        {
+                            av_log(NULL, AV_LOG_ERROR, "Failed to allocate audio buffer");
+                            av_packet_unref(m_packet);
+                            cleanup();
+                            return;
+                        }
+                        swr_convert(m_swrCtx, m_audio_frame_cache->m_cache->data, m_audio_frame_cache->m_cache->nb_samples,
+                                   (const uint8_t **)m_audioFrame->data, m_audioFrame->nb_samples);
+                        on_new_audio_frame_avaliable(m_audio_frame_cache);
                     }
                 }
             }
@@ -286,27 +282,26 @@ void FFmpegPlayer::start_preview(const std::string &media_url)
             on_stop_preview(local_media_url);
             return;
         }
-    }
-                               });
+    } });
 }
 
 void FFmpegPlayer::stop_preview()
 {
     std::lock_guard<std::mutex> lk(player_lock);
     bool expected = true;
-    if(!m_started.compare_exchange_strong(expected, false, std::memory_order_release, std::memory_order_relaxed))
+    if (!m_started.compare_exchange_strong(expected, false, std::memory_order_release, std::memory_order_relaxed))
         return;
     if (player_future.valid())
         player_future.get();
     cleanup();
 }
-void FFmpegPlayer::on_start_preview(const std::string& media_url){};
 
+void FFmpegPlayer::on_start_preview(const std::string &media_url){};
 void FFmpegPlayer::on_new_frame_avaliable(){};
 void FFmpegPlayer::on_new_audio_frame_avaliable(std::shared_ptr<FrameCache> m_frame_cache){};
-
-void FFmpegPlayer::on_stop_preview(const std::string& media_url){};
+void FFmpegPlayer::on_stop_preview(const std::string &media_url){};
 void FFmpegPlayer::on_ffmpeg_error(){};
+
 void FFmpegPlayer::cleanup()
 {
     // Free resources
@@ -320,10 +315,20 @@ void FFmpegPlayer::cleanup()
         av_frame_free(&m_frame);
         m_frame = nullptr;
     }
+    if (m_audioFrame)
+    {
+        av_frame_free(&m_audioFrame);
+        m_audioFrame = nullptr;
+    }
     if (m_codecCtx)
     {
         avcodec_free_context(&m_codecCtx);
         m_codecCtx = nullptr;
+    }
+    if (m_audioCodecCtx)
+    {
+        avcodec_free_context(&m_audioCodecCtx);
+        m_audioCodecCtx = nullptr;
     }
     if (m_formatCtx)
     {

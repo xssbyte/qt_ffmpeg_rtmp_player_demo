@@ -6,23 +6,23 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+
 #include <QDebug>
 #include <QThread>
 #include <QPainter>
 #include <QWidget>
-#include <QAudioOutput>
-#include <QBuffer>
+#include <QTimer>
 
-//#include <WinAudioPlayer.h>
 #include <FFmpegPlayer.h>
-#include <QIORingBuffer.h>
+#include <QAudioPlayer.h>
 /**
- * @brief The QPlayerWidget class
- * Qt对于普通QWidget，只能使用异步绘制到主线程，缓存一帧至少有一次memcpy，如果要实现同步绘制，只能使用QOpenGLWidget
- * QPlayerWidget继承QWidget，使用qt框架的UI更新事件。先转为QImage，然后通过调用update()实现刷新上屏
- * 实现简单，有一次拷贝QImage的开销，对事件循环压力大，不适合预览，但是适合做取帧和抽帧
- */
-
+* @brief         QPlayerWidget class
+* Qt对于普通QWidget，只能使用异步绘制到主线程，缓存一帧至少有一次memcpy，如果要实现同步绘制，只能使用QOpenGLWidget
+* QPlayerWidget继承QWidget，使用qt框架的UI更新事件。先转为QImage，然后通过调用update()实现刷新上屏
+* 实现简单，有一次拷贝QImage的开销，对事件循环压力大，不适合预览，但是适合做取帧和抽帧
+* @author        Samuel<13321133339@163.com>
+* @date          2023/09/23
+*/
 class QPlayerWidget : public QWidget, protected FFmpegPlayer
 {
     Q_OBJECT
@@ -38,10 +38,7 @@ protected:
     void on_new_audio_frame_avaliable(std::shared_ptr<FrameCache> m_frame_cache) override;
 private:
     QImage m_image;
-    QBuffer m_audio_buffer;
-    std::unique_ptr<QAudioOutput> audioOutput;
-    std::unique_ptr<QIODevice> streamOut;
-    QIORingBuffer m_ringBuffer;
+    std::unique_ptr<QAudioPlayer> m_audioPlayer;
 };
 
 #endif // QPLAYERWIDGET_H
