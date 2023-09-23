@@ -7,6 +7,8 @@ CONFIG += c++17
 # In order to do so, uncomment the following line.
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
 
+DEFINES += USE_WINDOWS_MULTIMEDIA
+
 SOURCES += \
     FFmpegPlayer.cpp \
     QGLPlayerWidget.cpp \
@@ -16,8 +18,8 @@ SOURCES += \
 
 HEADERS += \
     FFmpegPlayer.h \
-    QAudioPlayer.h \
     QGLPlayerWidget.h \
+    QIORingBuffer.h \
     QPlayerWidget.h \
     mainwindow.h
 
@@ -29,8 +31,8 @@ qnx: target.path = /tmp/$${TARGET}/bin
 else: unix:!android: target.path = /opt/$${TARGET}/bin
 !isEmpty(target.path): INSTALLS += target
 
-LIBS += -lopengl32  -lGLU32
-LIBS += -L$$PWD/../ffmpeg-master-latest-win64-gpl-shared/lib/ -lavutil -lavformat -lavcodec -lswscale
+LIBS += -lopengl32  -lGLU32 -lwinmm
+LIBS += -L$$PWD/../ffmpeg-master-latest-win64-gpl-shared/lib/ -lavutil -lavformat -lavcodec -lswscale -lswresample
 
 INCLUDEPATH += $$PWD/../ffmpeg-master-latest-win64-gpl-shared/include
 DEPENDPATH += $$PWD/../ffmpeg-master-latest-win64-gpl-shared/include

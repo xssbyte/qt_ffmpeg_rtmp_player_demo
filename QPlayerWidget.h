@@ -10,9 +10,12 @@
 #include <QThread>
 #include <QPainter>
 #include <QWidget>
+#include <QAudioOutput>
+#include <QBuffer>
 
+//#include <WinAudioPlayer.h>
 #include <FFmpegPlayer.h>
-
+#include <QIORingBuffer.h>
 /**
  * @brief The QPlayerWidget class
  * Qt对于普通QWidget，只能使用异步绘制到主线程，缓存一帧至少有一次memcpy，如果要实现同步绘制，只能使用QOpenGLWidget
@@ -32,8 +35,13 @@ protected:
     void paintEvent(QPaintEvent *event) override;
 
     void on_new_frame_avaliable() override;
+    void on_new_audio_frame_avaliable(std::shared_ptr<FrameCache> m_frame_cache) override;
 private:
     QImage m_image;
+    QBuffer m_audio_buffer;
+    std::unique_ptr<QAudioOutput> audioOutput;
+    std::unique_ptr<QIODevice> streamOut;
+    QIORingBuffer m_ringBuffer;
 };
 
 #endif // QPLAYERWIDGET_H

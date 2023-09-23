@@ -12,6 +12,7 @@ extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 #include <libswscale/swscale.h>
+#include <libswresample/swresample.h>
 }
 /**
  * @brief FFmpeg 播放器类，单生产者单消费者
@@ -38,15 +39,6 @@ public:
 
 
 protected:
-    //播放线程启动成功回调
-    virtual void on_start_preview(const std::string& media_url);
-    //新的帧可用回调，不传入帧的数据，帧使用原子量同步
-    virtual void on_new_frame_avaliable();
-    //播放线程关闭成功回调
-    virtual void on_stop_preview(const std::string& media_url);
-    //播放线程错误回调
-    virtual void on_ffmpeg_error();
-
     class FrameCache
     {
     public:
@@ -60,24 +52,37 @@ protected:
         }
         AVFrame *m_cache;
     };
+    //播放线程启动成功回调
+    virtual void on_start_preview(const std::string& media_url);
+    //新的帧可用回调，不传入帧的数据，帧使用原子量同步
+    virtual void on_new_frame_avaliable();
+    //播放线程关闭成功回调
+    virtual void on_stop_preview(const std::string& media_url);
+    //播放线程错误回调
+    virtual void on_ffmpeg_error();
+
+    virtual void on_new_audio_frame_avaliable(std::shared_ptr<FrameCache> m_frame_cache);
+
     //单生产者单消费者模型，可以使用原子量同步并避免memcpy
     std::atomic_bool frame_consumed = true;
+    std::atomic_bool audio_frame_consumed = true;
     std::unique_ptr<FrameCache> m_frame_cache;
-
+    std::shared_ptr<FrameCache> m_audio_frame_cache;
 private:
     void cleanup();
 
     AVFormatContext *m_formatCtx;
-    AVCodecContext *m_codecCtx;
+    AVCodecContext *m_codecCtx, *m_audioCodecCtx;
     AVDictionary *m_options;
-    AVFrame *m_frame;
+    AVFrame *m_frame, *m_audioFrame, *m_audioFrameResampled;
     AVPacket *m_packet;
     SwsContext *m_swsCtx;
+    SwrContext *m_swrCtx;
 
     std::future<void> player_future;
     std::mutex player_lock;
     int m_videoStream;
-    int m_audioStream;
+    int m_audioStream = -1;
 };
 
 #endif // FFMPEGPLAYER_H
