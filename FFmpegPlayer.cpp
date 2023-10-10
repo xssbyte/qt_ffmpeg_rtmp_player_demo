@@ -310,6 +310,11 @@ void FFmpegPlayer::cleanup()
         sws_freeContext(m_swsCtx);
         m_swsCtx = nullptr;
     }
+    if (m_swrCtx)
+    {
+        swr_free(&m_swrCtx);
+        m_swrCtx = nullptr;
+    }
     if (m_frame)
     {
         av_frame_free(&m_frame);

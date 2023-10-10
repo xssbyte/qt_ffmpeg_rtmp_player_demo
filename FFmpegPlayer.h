@@ -73,13 +73,15 @@ protected:
 private:
     void cleanup();
 
-    AVFormatContext *m_formatCtx;
-    AVCodecContext *m_codecCtx, *m_audioCodecCtx;
-    AVDictionary *m_options;
-    AVFrame *m_frame, *m_audioFrame;
-    AVPacket *m_packet;
-    SwsContext *m_swsCtx;
-    SwrContext *m_swrCtx;
+    AVFormatContext *m_formatCtx = nullptr;
+    AVCodecContext *m_codecCtx = nullptr;
+    AVCodecContext *m_audioCodecCtx = nullptr;
+    AVDictionary *m_options = nullptr;
+    AVFrame *m_frame = nullptr;
+    AVFrame *m_audioFrame = nullptr;
+    AVPacket *m_packet = nullptr;
+    SwsContext *m_swsCtx = nullptr;
+    SwrContext *m_swrCtx = nullptr;
 
     std::future<void> player_future;
     std::mutex player_lock;
