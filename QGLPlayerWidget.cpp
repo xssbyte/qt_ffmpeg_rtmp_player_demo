@@ -8,12 +8,12 @@ QGLPlayerWidget::QGLPlayerWidget(QWidget *parent)
 void QGLPlayerWidget::start_preview(const std::string &media_url)
 {
     FFmpegPlayer::start_preview(media_url);
-    m_audioPlayer->start_consume_audio();
+//    m_audioPlayer->start_consume_audio();
 }
 void QGLPlayerWidget::stop_preview()
 {
     FFmpegPlayer::stop_preview();
-    m_audioPlayer->stop_consume_audio();
+//    m_audioPlayer->stop_consume_audio();
 }
 void QGLPlayerWidget::initializeGL()
 {
@@ -65,19 +65,21 @@ void QGLPlayerWidget::on_new_frame_avaliable()
 }
 void QGLPlayerWidget::on_start_preview([[maybe_unused]]const std::string& media_url)
 {
+    qDebug() << __FUNCTION__ ;
     init_texture_flag.store(true, std::memory_order_release);    
 }
 
 void QGLPlayerWidget::on_stop_preview([[maybe_unused]]const std::string& media_url)
 {
+    qDebug() << __FUNCTION__ ;
     init_texture_flag.store(false, std::memory_order_release);
 }
 
 void QGLPlayerWidget::on_new_audio_frame_avaliable(std::shared_ptr<FrameCache> m_frame_cache)
 {
-    if(m_audioPlayer)
-    {
-        m_audioPlayer->write(reinterpret_cast<const char*>(m_frame_cache->m_cache->data[0]), m_frame_cache->m_cache->linesize[0]);
-    }
+//    if(m_audioPlayer)
+//    {
+//        m_audioPlayer->write(reinterpret_cast<const char*>(m_frame_cache->m_cache->data[0]), m_frame_cache->m_cache->linesize[0]);
+//    }
 //    qDebug() << __FUNCTION__ << bytes_written << m_frame_cache->m_cache->linesize[0];
 }

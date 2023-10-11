@@ -27,20 +27,25 @@ public:
     explicit FFmpegPlayer();
     ~FFmpegPlayer();
 public:
+    enum player_status : uint8_t
+    {
+        PLAYER_STATUS_IDLE,
+        PLAYER_STATUS_BLOCK,
+        PLAYER_STATUS_PENDING_STOP
+    };
     std::atomic_bool m_started;
+    std::atomic_uint8_t m_status = 0;
 
 public:
     /**
      * @brief start_preview 开始异步任务，启动ffmpeg解析url
      * @param media_url 媒体url
      */
-    void start_preview(const std::string &media_url);
+    int start_preview(const std::string &media_url);
     /**
      * @brief stop_preview 停止预览，清理ffmpeg资源，同步等待播放线程结束
      */
-    void stop_preview();
-
-
+    int stop_preview();
 protected:
     class FrameCache
     {
@@ -71,6 +76,8 @@ protected:
     std::unique_ptr<FrameCache> m_frame_cache;
     std::shared_ptr<FrameCache> m_audio_frame_cache;
 private:
+    int process_player_task(const std::string &media_url);
+
     void cleanup();
 
     AVFormatContext *m_formatCtx = nullptr;
@@ -85,7 +92,7 @@ private:
 
     std::future<void> player_future;
     std::mutex player_lock;
-    int m_videoStream;
+    int m_videoStream = -1;
     int m_audioStream = -1;
 };
 
