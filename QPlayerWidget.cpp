@@ -1,4 +1,5 @@
 #include <QPlayerWidget.h>
+#include <QDateTime> // for log
 
 QPlayerWidget::QPlayerWidget(QWidget *parent) : QWidget(parent),
     m_audioPlayer(new QAudioPlayer(8192 * 16))
@@ -12,7 +13,7 @@ QPlayerWidget::QPlayerWidget(QWidget *parent) : QWidget(parent),
 }
 void QPlayerWidget::paintEvent(QPaintEvent *event)
 {
-    qDebug() << __FUNCTION__;
+    qDebug() << __FUNCTION__ << QDateTime::currentDateTime().toMSecsSinceEpoch();
     if(!FFmpegPlayer::frame_consumed.load(std::memory_order_acquire))
     {
         QPainter painter(this);

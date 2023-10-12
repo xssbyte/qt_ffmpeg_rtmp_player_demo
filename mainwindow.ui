@@ -6,96 +6,21 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>850</width>
-    <height>626</height>
+    <width>1920</width>
+    <height>1080</height>
    </rect>
   </property>
   <property name="windowTitle">
    <string>MainWindow</string>
   </property>
   <widget class="QWidget" name="centralwidget">
-   <widget class="QPushButton" name="button_start_preview">
-    <property name="geometry">
-     <rect>
-      <x>720</x>
-      <y>70</y>
-      <width>101</width>
-      <height>21</height>
-     </rect>
-    </property>
-    <property name="text">
-     <string>start_preview</string>
-    </property>
-   </widget>
-   <widget class="QPushButton" name="button_stop_preview">
-    <property name="geometry">
-     <rect>
-      <x>720</x>
-      <y>100</y>
-      <width>101</width>
-      <height>21</height>
-     </rect>
-    </property>
-    <property name="text">
-     <string>stop_preview</string>
-    </property>
-   </widget>
-   <widget class="QPushButton" name="button_start_test">
-    <property name="geometry">
-     <rect>
-      <x>720</x>
-      <y>130</y>
-      <width>101</width>
-      <height>21</height>
-     </rect>
-    </property>
-    <property name="text">
-     <string>start_test</string>
-    </property>
-   </widget>
-   <widget class="QPushButton" name="button_stop_test">
-    <property name="geometry">
-     <rect>
-      <x>720</x>
-      <y>160</y>
-      <width>101</width>
-      <height>21</height>
-     </rect>
-    </property>
-    <property name="text">
-     <string>stop_test</string>
-    </property>
-   </widget>
-   <widget class="QLineEdit" name="url_line_edit">
-    <property name="geometry">
-     <rect>
-      <x>70</x>
-      <y>540</y>
-      <width>611</width>
-      <height>21</height>
-     </rect>
-    </property>
-   </widget>
-   <widget class="QLabel" name="url_label">
-    <property name="geometry">
-     <rect>
-      <x>40</x>
-      <y>540</y>
-      <width>31</width>
-      <height>21</height>
-     </rect>
-    </property>
-    <property name="text">
-     <string>url:</string>
-    </property>
-   </widget>
    <widget class="QTabWidget" name="tab_widget">
     <property name="geometry">
      <rect>
-      <x>50</x>
-      <y>30</y>
-      <width>644</width>
-      <height>506</height>
+      <x>20</x>
+      <y>40</y>
+      <width>1604</width>
+      <height>926</height>
      </rect>
     </property>
     <property name="currentIndex">
@@ -112,14 +37,72 @@
      </attribute>
     </widget>
    </widget>
+   <widget class="QWidget" name="">
+    <property name="geometry">
+     <rect>
+      <x>20</x>
+      <y>10</y>
+      <width>931</width>
+      <height>26</height>
+     </rect>
+    </property>
+    <layout class="QHBoxLayout" name="horizontalLayout_3">
+     <item>
+      <layout class="QHBoxLayout" name="horizontalLayout_2">
+       <item>
+        <widget class="QLabel" name="url_label">
+         <property name="text">
+          <string>url:</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLineEdit" name="url_line_edit"/>
+       </item>
+      </layout>
+     </item>
+     <item>
+      <layout class="QHBoxLayout" name="horizontalLayout">
+       <item>
+        <widget class="QPushButton" name="button_start_preview">
+         <property name="text">
+          <string>start_preview</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="button_stop_preview">
+         <property name="text">
+          <string>stop_preview</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="button_start_test">
+         <property name="text">
+          <string>start_test</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="button_stop_test">
+         <property name="text">
+          <string>stop_test</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </item>
+    </layout>
+   </widget>
   </widget>
   <widget class="QMenuBar" name="menubar">
    <property name="geometry">
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>850</width>
-     <height>22</height>
+     <width>1920</width>
+     <height>21</height>
     </rect>
    </property>
   </widget>

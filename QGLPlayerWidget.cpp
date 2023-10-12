@@ -1,4 +1,5 @@
 #include <QGLPlayerWidget.h>
+#include <QDateTime> // for log
 
 QGLPlayerWidget::QGLPlayerWidget(QWidget *parent)
     : QOpenGLWidget(parent),
@@ -8,12 +9,12 @@ QGLPlayerWidget::QGLPlayerWidget(QWidget *parent)
 void QGLPlayerWidget::start_preview(const std::string &media_url)
 {
     FFmpegPlayer::start_preview(media_url);
-//    m_audioPlayer->start_consume_audio();
+    m_audioPlayer->start_consume_audio();
 }
 void QGLPlayerWidget::stop_preview()
 {
     FFmpegPlayer::stop_preview();
-//    m_audioPlayer->stop_consume_audio();
+    m_audioPlayer->stop_consume_audio();
 }
 void QGLPlayerWidget::initializeGL()
 {
@@ -29,7 +30,7 @@ void QGLPlayerWidget::resizeGL(int w, int h)
 }
 void QGLPlayerWidget::paintGL()
 {
-    qDebug() << __FUNCTION__;
+    qDebug() << __FUNCTION__ << QDateTime::currentDateTime().toMSecsSinceEpoch();
     if(!FFmpegPlayer::frame_consumed.load(std::memory_order_acquire))
     {
         if(init_texture_flag.load(std::memory_order_acquire))
@@ -77,9 +78,9 @@ void QGLPlayerWidget::on_stop_preview([[maybe_unused]]const std::string& media_u
 
 void QGLPlayerWidget::on_new_audio_frame_avaliable(std::shared_ptr<FrameCache> m_frame_cache)
 {
-//    if(m_audioPlayer)
-//    {
-//        m_audioPlayer->write(reinterpret_cast<const char*>(m_frame_cache->m_cache->data[0]), m_frame_cache->m_cache->linesize[0]);
-//    }
+    if(m_audioPlayer)
+    {
+        m_audioPlayer->write(reinterpret_cast<const char*>(m_frame_cache->m_cache->data[0]), m_frame_cache->m_cache->linesize[0]);
+    }
 //    qDebug() << __FUNCTION__ << bytes_written << m_frame_cache->m_cache->linesize[0];
 }

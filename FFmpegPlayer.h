@@ -27,12 +27,7 @@ public:
     explicit FFmpegPlayer();
     ~FFmpegPlayer();
 public:
-    enum player_status : uint8_t
-    {
-        PLAYER_STATUS_IDLE,
-        PLAYER_STATUS_BLOCK,
-        PLAYER_STATUS_PENDING_STOP
-    };
+
     std::atomic_bool m_started;
     std::atomic_uint8_t m_status = 0;
 
@@ -76,8 +71,13 @@ protected:
     std::unique_ptr<FrameCache> m_frame_cache;
     std::shared_ptr<FrameCache> m_audio_frame_cache;
 private:
+    enum player_status : uint8_t
+    {
+        PLAYER_STATUS_IDLE,
+        PLAYER_STATUS_BLOCK,
+        PLAYER_STATUS_PENDING_STOP
+    };
     int process_player_task(const std::string &media_url);
-
     void cleanup();
 
     AVFormatContext *m_formatCtx = nullptr;

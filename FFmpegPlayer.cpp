@@ -22,9 +22,6 @@ FFmpegPlayer::FFmpegPlayer()
 
 FFmpegPlayer::~FFmpegPlayer()
 {
-//    m_started = false;
-//    if (player_future.valid())
-//        player_future.get();
     cleanup();
 }
 
@@ -38,17 +35,14 @@ int FFmpegPlayer::start_preview(const std::string &media_url)
         std::future<int> futureResult = std::async(std::launch::async, [&, media_url](){
             on_start_preview(media_url);
             m_status.store(PLAYER_STATUS_BLOCK, std::memory_order_release);
-            av_log(NULL, AV_LOG_ERROR, "stop1");
             return this->process_player_task(media_url);
         });
         //future observer
         std::thread([&, media_url,futureResult = std::move(futureResult), p_status = std::ref(m_status)]() mutable {
             int result = futureResult.get();
-            av_log(NULL, AV_LOG_ERROR, "stop1");
             p_status.get().store(PLAYER_STATUS_IDLE, std::memory_order_release);
-            //You can block on_stop_preview && You can restart in on_stop_preview
+            //You can block on_stop_preview && You can restart preview in on_stop_preview
             on_stop_preview(media_url);
-            av_log(NULL, AV_LOG_ERROR, "stop2");
         }).detach();
         return 0;
     }
@@ -73,15 +67,7 @@ int FFmpegPlayer::stop_preview()
 }
 int FFmpegPlayer::process_player_task(const std::string &media_url)
 {
-//    std::lock_guard<std::mutex> lk(player_lock);
-//    bool expected = false;
-//    if (!m_started.compare_exchange_strong(expected, true, std::memory_order_release, std::memory_order_relaxed))
-//        return;
-//    player_future = std::async(std::launch::async, [&, media_url]()
-//                               {
-                                    // Open input stream
     std::string local_media_url = media_url;
-//    on_start_preview(local_media_url);
     m_formatCtx = avformat_alloc_context();
     if (!m_formatCtx)
     {
@@ -101,7 +87,6 @@ int FFmpegPlayer::process_player_task(const std::string &media_url)
         cleanup();
         return -1;
     }
-
     // Find video stream
     for (unsigned int i = 0; i < m_formatCtx->nb_streams; i++)
     {
@@ -223,7 +208,10 @@ int FFmpegPlayer::process_player_task(const std::string &media_url)
             cleanup();
             return -1;
         }
-        AVChannelLayout outChannelLayout = AV_CHANNEL_LAYOUT_STEREO;
+//        AVChannelLayout outChannelLayout = AV_CHANNEL_LAYOUT_STEREO;
+        AVChannelLayout outChannelLayout;
+        outChannelLayout.order = AV_CHANNEL_ORDER_NATIVE;
+        outChannelLayout.u.mask = AV_CH_LAYOUT_STEREO;
         outChannelLayout.nb_channels = 2;
         if (swr_alloc_set_opts2(&m_swrCtx, &outChannelLayout, AV_SAMPLE_FMT_S16, 48000,
                     &(m_audioCodecCtx->ch_layout), m_audioCodecCtx->sample_fmt, m_audioCodecCtx->sample_rate, 0, NULL) != 0)
@@ -240,7 +228,6 @@ int FFmpegPlayer::process_player_task(const std::string &media_url)
         }
         //swr_free
     }
-
     m_packet = av_packet_alloc();
     if (!m_packet)
     {
@@ -254,12 +241,16 @@ int FFmpegPlayer::process_player_task(const std::string &media_url)
         //    PLAYER_STATUS_IDLE->PLAYER_STATUS_BLOCK->PLAYER_STATUS_PENDING_STOP->PLAYER_STATUS_IDLE
         if(m_status == PLAYER_STATUS_BLOCK)
         {
+//            av_log(NULL, AV_LOG_ERROR, "1");
             if (m_packet->stream_index == m_videoStream)
             {
+//                av_log(NULL, AV_LOG_ERROR, "2");
                 if (avcodec_send_packet(m_codecCtx, m_packet) >= 0)
                 {
+//                    av_log(NULL, AV_LOG_ERROR, "3");
                     while (avcodec_receive_frame(m_codecCtx, m_frame) >= 0)
                     {
+//                        av_log(NULL, AV_LOG_ERROR, "4");
                         // producer
                         if(frame_consumed.load(std::memory_order_acquire))
                         {
@@ -299,7 +290,10 @@ int FFmpegPlayer::process_player_task(const std::string &media_url)
                     {
                         m_audio_frame_cache.reset(new FrameCache());
                         m_audio_frame_cache->m_cache->format = AV_SAMPLE_FMT_S16;
-                        AVChannelLayout outChannelLayout = AV_CHANNEL_LAYOUT_STEREO;
+//                        AVChannelLayout outChannelLayout = AV_CHANNEL_LAYOUT_STEREO;
+                        AVChannelLayout outChannelLayout;
+                        outChannelLayout.order = AV_CHANNEL_ORDER_NATIVE;
+                        outChannelLayout.u.mask = AV_CH_LAYOUT_STEREO;
                         outChannelLayout.nb_channels = 2;
                         m_audio_frame_cache->m_cache->ch_layout = outChannelLayout;
                         m_audio_frame_cache->m_cache->nb_samples = m_audioFrame->nb_samples;
@@ -332,10 +326,8 @@ int FFmpegPlayer::process_player_task(const std::string &media_url)
             return -1;
         }
     }
-//    });
     return 0;
 }
-
 
 
 void FFmpegPlayer::on_start_preview(const std::string &media_url){};
@@ -357,16 +349,7 @@ void FFmpegPlayer::cleanup()
         swr_free(&m_swrCtx);
         m_swrCtx = nullptr;
     }
-    if (m_frame)
-    {
-        av_frame_free(&m_frame);
-        m_frame = nullptr;
-    }
-    if (m_audioFrame)
-    {
-        av_frame_free(&m_audioFrame);
-        m_audioFrame = nullptr;
-    }
+
     if (m_codecCtx)
     {
         avcodec_free_context(&m_codecCtx);
@@ -376,6 +359,17 @@ void FFmpegPlayer::cleanup()
     {
         avcodec_free_context(&m_audioCodecCtx);
         m_audioCodecCtx = nullptr;
+    }
+
+    if (m_frame)
+    {
+        av_frame_free(&m_frame);
+        m_frame = nullptr;
+    }
+    if (m_audioFrame)
+    {
+        av_frame_free(&m_audioFrame);
+        m_audioFrame = nullptr;
     }
     if (m_formatCtx)
     {
@@ -393,4 +387,6 @@ void FFmpegPlayer::cleanup()
         av_dict_free(&m_options);
         m_options = nullptr;
     }
+    m_videoStream = -1;
+    m_audioStream = -1;
 }
