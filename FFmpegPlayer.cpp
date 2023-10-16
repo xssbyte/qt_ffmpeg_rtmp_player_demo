@@ -85,40 +85,7 @@ int FFmpegPlayer::start_local_record(const std::string &output_file)
         //RECORDER_STATUS_IDLE->RECORDER_STATUS_RECORDING
         if(m_recorder_status.state() == RECORDER_STATUS_IDLE)
         {
-            av_log(NULL, AV_LOG_ERROR, "start to record");
-            m_outStreamContext = avformat_alloc_context();
-            if (int ret = avformat_alloc_output_context2(&m_outStreamContext, NULL, NULL, output_file.c_str()) < 0)
-            {
-                av_log(NULL, AV_LOG_ERROR, "Failed to allocate AVFormatContext");
-                cleanup_recorder();
-                return ret;
-            }
-            if (int ret = avio_open(&m_outStreamContext->pb, output_file.c_str(), AVIO_FLAG_WRITE) < 0)
-            {
-                av_log(NULL, AV_LOG_ERROR, "Failed to open output file");
-                cleanup_recorder();
-                return ret;
-            }
-            m_outStream = avformat_new_stream(m_outStreamContext, NULL);
-            if (!m_outStream)
-            {
-                av_log(NULL, AV_LOG_ERROR, "Failed to allocate AVStream");
-                cleanup_recorder();
-                return -1;
-            }
-            if(int ret = avcodec_parameters_copy(m_outStream->codecpar, m_codecParam) < 0)
-            {
-                av_log(NULL, AV_LOG_ERROR, "Failed to copy avcodec param");
-                cleanup_recorder();
-                return ret;
-            }
-            if (int ret = avformat_write_header(m_outStreamContext, NULL) < 0)
-            {
-                av_log(NULL, AV_LOG_ERROR, "Failed to write output header");
-                cleanup_recorder();
-                return ret;
-            }
-            av_log(NULL, AV_LOG_ERROR, "start to record-write header");
+            process_recorder_task(output_file);
             return m_recorder_status.transition(RECORDER_STATUS_IDLE, RECORDER_STATUS_RECORDING) == true;
         }
         else if(m_player_status.state() == PLAYER_STATUS_IDLE)
@@ -131,12 +98,51 @@ int FFmpegPlayer::start_local_record(const std::string &output_file)
     {
         return -1;
     }
+    return -1;
 }
 int FFmpegPlayer::stop_local_record()
 {
     std::lock_guard<std::mutex> lk(player_lock);
     //RECORDER_STATUS_RECORDING->RECORDER_STATUS_PENDING_STOP
     return m_recorder_status.transition(RECORDER_STATUS_RECORDING, RECORDER_STATUS_PENDING_STOP) == true;
+}
+int FFmpegPlayer::process_recorder_task(const std::string& file)
+{
+    std::string local_file = file;
+    m_outStreamContext = avformat_alloc_context();
+    if (int ret = avformat_alloc_output_context2(&m_outStreamContext, NULL, NULL, local_file.c_str()) < 0)
+    {
+        av_log(NULL, AV_LOG_ERROR, "Failed to allocate AVFormatContext");
+        cleanup_recorder();
+        return ret;
+    }
+    if (int ret = avio_open(&m_outStreamContext->pb, local_file.c_str(), AVIO_FLAG_WRITE) < 0)
+    {
+        av_log(NULL, AV_LOG_ERROR, "Failed to open output file");
+        cleanup_recorder();
+        return ret;
+    }
+    m_outStream = avformat_new_stream(m_outStreamContext, NULL);
+    if (!m_outStream)
+    {
+        av_log(NULL, AV_LOG_ERROR, "Failed to allocate AVStream");
+        cleanup_recorder();
+        return -1;
+    }
+    if(int ret = avcodec_parameters_copy(m_outStream->codecpar, m_codecParam) < 0)
+    {
+        av_log(NULL, AV_LOG_ERROR, "Failed to copy avcodec param");
+        cleanup_recorder();
+        return ret;
+    }
+    if (int ret = avformat_write_header(m_outStreamContext, NULL) < 0)
+    {
+        av_log(NULL, AV_LOG_ERROR, "Failed to write output header");
+        cleanup_recorder();
+        return ret;
+    }
+    av_log(NULL, AV_LOG_ERROR, "start to record");
+    return 0;
 }
 int FFmpegPlayer::process_player_task(const std::string &media_url)
 {
@@ -309,6 +315,35 @@ int FFmpegPlayer::process_player_task(const std::string &media_url)
         cleanup();
         return -1;
     }
+    //initialization finish,load extra features sync
+    on_param_initialized();
+
+    const auto &process_extra_feature = [&](){
+        if(m_recorder_status.state() == RECORDER_STATUS_RECORDING)
+        {
+            av_interleaved_write_frame(m_outStreamContext, m_packet);
+        }
+        else if(m_recorder_status.state() == RECORDER_STATUS_PENDING_STOP)
+        {
+            av_write_trailer(m_outStreamContext);
+            cleanup_recorder();
+            m_recorder_status.transition(RECORDER_STATUS_PENDING_STOP, RECORDER_STATUS_IDLE);
+        }
+    };
+    const auto &terminal_extra_feature = [&](){
+        if(m_recorder_status.state() == RECORDER_STATUS_RECORDING)
+        {
+            av_write_trailer(m_outStreamContext);
+            cleanup_recorder();
+            m_recorder_status.transition(RECORDER_STATUS_RECORDING, RECORDER_STATUS_IDLE);
+        }
+        else if(m_recorder_status.state() == RECORDER_STATUS_PENDING_STOP)
+        {
+            av_write_trailer(m_outStreamContext);
+            cleanup_recorder();
+            m_recorder_status.transition(RECORDER_STATUS_PENDING_STOP, RECORDER_STATUS_IDLE);
+        }
+    };
 
     while (av_read_frame(m_formatCtx, m_packet) >= 0)
     {
@@ -320,16 +355,7 @@ int FFmpegPlayer::process_player_task(const std::string &media_url)
             {
                 if (avcodec_send_packet(m_codecCtx, m_packet) >= 0)
                 {
-                    if(m_recorder_status.state() == RECORDER_STATUS_RECORDING)
-                    {
-                        av_interleaved_write_frame(m_outStreamContext, m_packet);
-                    }
-                    else if(m_recorder_status.state() == RECORDER_STATUS_PENDING_STOP)
-                    {
-                        av_write_trailer(m_outStreamContext);
-                        cleanup_recorder();
-                        m_recorder_status.transition(RECORDER_STATUS_PENDING_STOP, RECORDER_STATUS_IDLE);
-                    }
+                    process_extra_feature();
                     while (avcodec_receive_frame(m_codecCtx, m_frame) >= 0)
                     {
                         // producer
@@ -339,6 +365,7 @@ int FFmpegPlayer::process_player_task(const std::string &media_url)
                             if (!m_frame_cache->m_cache)
                             {
                                 av_log(NULL, AV_LOG_ERROR, "Failed to allocate AVFrame");
+                                terminal_extra_feature();
                                 av_packet_unref(m_packet);
                                 cleanup();
                                 return -1;
@@ -349,6 +376,7 @@ int FFmpegPlayer::process_player_task(const std::string &media_url)
                             if (av_frame_get_buffer(m_frame_cache->m_cache, 0) < 0)
                             {
                                 av_log(NULL, AV_LOG_ERROR, "Failed to allocate RGB buffer");
+                                terminal_extra_feature();
                                 av_packet_unref(m_packet);
                                 cleanup();
                                 return -1;
@@ -382,6 +410,7 @@ int FFmpegPlayer::process_player_task(const std::string &media_url)
                         if (av_frame_get_buffer(m_audio_frame_cache->m_cache, 0) < 0)
                         {
                             av_log(NULL, AV_LOG_ERROR, "Failed to allocate audio buffer");
+                            terminal_extra_feature();
                             av_packet_unref(m_packet);
                             cleanup();
                             return -1;
@@ -396,6 +425,7 @@ int FFmpegPlayer::process_player_task(const std::string &media_url)
         }
         else if(m_player_status.state() == PLAYER_STATUS_PENDING_STOP)
         {
+            terminal_extra_feature();
             av_packet_unref(m_packet);
             cleanup();
             return 0;
@@ -403,12 +433,14 @@ int FFmpegPlayer::process_player_task(const std::string &media_url)
         else
         {
             av_log(NULL, AV_LOG_ERROR, "Unexpected Status!");
+            terminal_extra_feature();
             av_packet_unref(m_packet);
             cleanup();
             return -1;
         }
     }
     //EOF or error
+    terminal_extra_feature();
     av_packet_unref(m_packet);
     cleanup();
     return 0;
@@ -422,6 +454,8 @@ void FFmpegPlayer::on_stop_preview(const std::string &media_url){};
 void FFmpegPlayer::on_ffmpeg_error(int errnum){};
 void FFmpegPlayer::on_start_record(const std::string& file){};
 void FFmpegPlayer::on_stop_record(const std::string& file){};
+
+void FFmpegPlayer::on_param_initialized(){};
 
 void FFmpegPlayer::cleanup()
 {
@@ -488,5 +522,9 @@ void FFmpegPlayer::cleanup_recorder()
     if(m_outStream)
     {
         m_outStream = nullptr;
+    }
+    if(m_codecParam)
+    {
+        m_codecParam = nullptr;
     }
 }

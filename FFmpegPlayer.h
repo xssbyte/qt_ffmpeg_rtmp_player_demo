@@ -18,7 +18,7 @@ extern "C" {
 * @brief         FFmpegPlayer class
 * FFmpeg 播放器类，单生产者单消费者
 * 子类播放widget需要继承FFmpegPlayer并重写回调。
-* 如果只是取帧，不需要显示或者自己实现显示，也可以直接实例化
+* 如果只是取帧，不需要显示或者自己实现显示，我们也可以直接实例化
 * @author        Samuel<13321133339@163.com>
 * @date          2023/09/23
 */
@@ -52,12 +52,12 @@ public:
      */
     int stop_local_record();
 
-    enum FFmpegPlayerErrno
-    {
-        STATUS_OK = 0,
-        INVALID_STATUS = -1,
-        NO_MEMORY = -2,
-    };
+//    enum FFmpegPlayerErrno
+//    {
+//        STATUS_OK = 0,
+//        INVALID_STATUS = -1,
+//        NO_MEMORY = -2,
+//    };
 protected:
     class FrameCache
     {
@@ -74,17 +74,21 @@ protected:
     };
     //播放线程启动成功回调
     virtual void on_start_preview(const std::string& media_url);
-    //新的帧可用回调，不传入帧的数据，帧使用原子量同步
+    //新的video帧可用回调，这里不传入帧的数据，帧使用原子量同步。也可以传帧数据，同步消费或者存入缓冲区
     virtual void on_new_frame_avaliable();
+    //新的audio帧可用回调，传入帧的数据,同步消费或者存入缓冲区
+    virtual void on_new_audio_frame_avaliable(std::shared_ptr<FrameCache> m_frame_cache);
     //播放线程关闭回调，不管是否报错，播放线程结束就回调
     virtual void on_stop_preview(const std::string& media_url);
     //播放线程错误回调
     virtual void on_ffmpeg_error(int errnum);
-
+    //开始录像的回调
     virtual void on_start_record(const std::string& file);
+    //停止录像的回调
     virtual void on_stop_record(const std::string& file);
 
-    virtual void on_new_audio_frame_avaliable(std::shared_ptr<FrameCache> m_frame_cache);
+    //额外feature可用的回调，当流初始化完成，这个回调被调用。
+    void on_param_initialized();
 
     //单生产者单消费者模型，可以使用原子量同步并避免memcpy
     std::atomic_bool frame_consumed = true;
@@ -96,6 +100,7 @@ private:
     enum PlayerStatus : uint8_t
     {
         PLAYER_STATUS_IDLE,
+
         PLAYER_STATUS_BLOCK,
         PLAYER_STATUS_PENDING_STOP
     };
@@ -120,6 +125,7 @@ private:
     };
 
     int process_player_task(const std::string &media_url);
+    int process_recorder_task(const std::string& file);
     void cleanup();
     void cleanup_recorder();
 
