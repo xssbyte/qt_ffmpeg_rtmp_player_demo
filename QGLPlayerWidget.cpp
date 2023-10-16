@@ -16,6 +16,14 @@ void QGLPlayerWidget::stop_preview()
     FFmpegPlayer::stop_preview();
     m_audioPlayer->stop_consume_audio();
 }
+void QGLPlayerWidget::start_local_record(const std::string &output_file)
+{
+    FFmpegPlayer::start_local_record(output_file);
+}
+void QGLPlayerWidget::stop_local_record()
+{
+    FFmpegPlayer::stop_local_record();
+}
 void QGLPlayerWidget::initializeGL()
 {
     initializeOpenGLFunctions();

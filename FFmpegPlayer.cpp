@@ -30,19 +30,37 @@ int FFmpegPlayer::start_preview(const std::string &media_url)
 {
     std::lock_guard<std::mutex> lk(player_lock);
     //PLAYER_STATUS_IDLE
-    if(m_status.load(std::memory_order_acquire) == PLAYER_STATUS_IDLE)
+    if(m_player_status.state() == PLAYER_STATUS_IDLE)
     {
         std::future<int> futureResult = std::async(std::launch::async, [&, media_url](){
-            on_start_preview(media_url);
-            m_status.store(PLAYER_STATUS_BLOCK, std::memory_order_release);
-            return this->process_player_task(media_url);
+            if(m_player_status.transition(PLAYER_STATUS_IDLE, PLAYER_STATUS_BLOCK) == true)
+            {
+                on_start_preview(media_url);
+                return this->process_player_task(media_url);
+            }
+            else
+            {
+                //status changed
+                return -1;
+            }
         });
         //future observer
-        std::thread([&, media_url,futureResult = std::move(futureResult), p_status = std::ref(m_status)]() mutable {
+        std::thread([&, media_url,futureResult = std::move(futureResult), p_status = std::ref(m_player_status)]() mutable {
             int result = futureResult.get();
-            p_status.get().store(PLAYER_STATUS_IDLE, std::memory_order_release);
-            //You can block on_stop_preview && You can restart preview in on_stop_preview
-            on_stop_preview(media_url);
+            if(result != 0)
+            {
+                on_ffmpeg_error(result);
+            }
+            if(m_player_status.transition(PLAYER_STATUS_PENDING_STOP, PLAYER_STATUS_IDLE) == true)
+            {
+                //You can block on_stop_preview && You can restart preview in on_stop_preview
+                on_stop_preview(media_url);
+            }
+            else
+            {
+                //unexpected status(unreachable)
+                av_log(NULL, AV_LOG_ERROR, "Reached an unexpected state %d\n", m_player_status.state());
+            }
         }).detach();
         return 0;
     }
@@ -55,15 +73,70 @@ int FFmpegPlayer::start_preview(const std::string &media_url)
 int FFmpegPlayer::stop_preview()
 {
     std::lock_guard<std::mutex> lk(player_lock);
-    uint8_t expected = PLAYER_STATUS_BLOCK;
     //PLAYER_STATUS_BLOCK->PLAYER_STATUS_PENDING_STOP
-    if (m_status.compare_exchange_strong(expected, PLAYER_STATUS_PENDING_STOP, std::memory_order_release, std::memory_order_relaxed))
-        return 0;
+    return m_player_status.transition(PLAYER_STATUS_BLOCK, PLAYER_STATUS_PENDING_STOP) == true;
+}
+
+int FFmpegPlayer::start_local_record(const std::string &output_file)
+{
+    std::lock_guard<std::mutex> lk(player_lock);
+    if(m_player_status.state() == PLAYER_STATUS_BLOCK)
+    {
+        //RECORDER_STATUS_IDLE->RECORDER_STATUS_RECORDING
+        if(m_recorder_status.state() == RECORDER_STATUS_IDLE)
+        {
+            av_log(NULL, AV_LOG_ERROR, "start to record");
+            m_outStreamContext = avformat_alloc_context();
+            if (int ret = avformat_alloc_output_context2(&m_outStreamContext, NULL, NULL, output_file.c_str()) < 0)
+            {
+                av_log(NULL, AV_LOG_ERROR, "Failed to allocate AVFormatContext");
+                cleanup_recorder();
+                return ret;
+            }
+            if (int ret = avio_open(&m_outStreamContext->pb, output_file.c_str(), AVIO_FLAG_WRITE) < 0)
+            {
+                av_log(NULL, AV_LOG_ERROR, "Failed to open output file");
+                cleanup_recorder();
+                return ret;
+            }
+            m_outStream = avformat_new_stream(m_outStreamContext, NULL);
+            if (!m_outStream)
+            {
+                av_log(NULL, AV_LOG_ERROR, "Failed to allocate AVStream");
+                cleanup_recorder();
+                return -1;
+            }
+            if(int ret = avcodec_parameters_copy(m_outStream->codecpar, m_codecParam) < 0)
+            {
+                av_log(NULL, AV_LOG_ERROR, "Failed to copy avcodec param");
+                cleanup_recorder();
+                return ret;
+            }
+            if (int ret = avformat_write_header(m_outStreamContext, NULL) < 0)
+            {
+                av_log(NULL, AV_LOG_ERROR, "Failed to write output header");
+                cleanup_recorder();
+                return ret;
+            }
+            av_log(NULL, AV_LOG_ERROR, "start to record-write header");
+            return m_recorder_status.transition(RECORDER_STATUS_IDLE, RECORDER_STATUS_RECORDING) == true;
+        }
+        else if(m_player_status.state() == PLAYER_STATUS_IDLE)
+        {
+            //
+            return -1;
+        }
+    }
     else
     {
-        //PLAYER_STATUS_BLOCK/PLAYER_STATUS_IDLE
         return -1;
     }
+}
+int FFmpegPlayer::stop_local_record()
+{
+    std::lock_guard<std::mutex> lk(player_lock);
+    //RECORDER_STATUS_RECORDING->RECORDER_STATUS_PENDING_STOP
+    return m_recorder_status.transition(RECORDER_STATUS_RECORDING, RECORDER_STATUS_PENDING_STOP) == true;
 }
 int FFmpegPlayer::process_player_task(const std::string &media_url)
 {
@@ -79,13 +152,13 @@ int FFmpegPlayer::process_player_task(const std::string &media_url)
     {
         av_log(NULL, AV_LOG_ERROR, "Failed to open input stream: %s\n", local_media_url.data());
         cleanup();
-        return -1;
+        return ret;
     }
     if (int ret = avformat_find_stream_info(m_formatCtx, nullptr) < 0)
     {
         av_log(NULL, AV_LOG_ERROR, "Failed to find stream information: %s\n", local_media_url.data());
         cleanup();
-        return -1;
+        return ret;
     }
     // Find video stream
     for (unsigned int i = 0; i < m_formatCtx->nb_streams; i++)
@@ -93,6 +166,7 @@ int FFmpegPlayer::process_player_task(const std::string &media_url)
         if (m_formatCtx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO)
         {
             m_videoStream = i;
+            m_codecParam = m_formatCtx->streams[i]->codecpar;
             av_log(NULL, AV_LOG_ERROR, "m_videoStream: %d\n", i);
         }
         else if (m_formatCtx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_AUDIO)
@@ -122,11 +196,11 @@ int FFmpegPlayer::process_player_task(const std::string &media_url)
             cleanup();
             return -1;
         }
-        if (avcodec_parameters_to_context(m_codecCtx, m_formatCtx->streams[m_videoStream]->codecpar) < 0)
+        if (int ret = avcodec_parameters_to_context(m_codecCtx, m_formatCtx->streams[m_videoStream]->codecpar) < 0)
         {
             av_log(NULL, AV_LOG_ERROR, "Failed to get codec context: %s\n", local_media_url.data());
             cleanup();
-            return -1;
+            return ret;
         }
         const AVCodec *codec = avcodec_find_decoder(m_codecCtx->codec_id);
         if (!codec)
@@ -135,11 +209,11 @@ int FFmpegPlayer::process_player_task(const std::string &media_url)
             cleanup();
             return -1;
         }
-        if (avcodec_open2(m_codecCtx, codec, nullptr) < 0)
+        if (int ret = avcodec_open2(m_codecCtx, codec, nullptr) < 0)
         {
             av_log(NULL, AV_LOG_ERROR, "Failed to find codec2: %s\n", local_media_url.data());
             cleanup();
-            return -1;
+            return ret;
         }
         // Allocate frame and packet
         m_frame = av_frame_alloc();
@@ -174,11 +248,11 @@ int FFmpegPlayer::process_player_task(const std::string &media_url)
             cleanup();
             return -1;
         }
-        if (avcodec_parameters_to_context(m_audioCodecCtx, m_formatCtx->streams[m_audioStream]->codecpar) < 0)
+        if (int ret = avcodec_parameters_to_context(m_audioCodecCtx, m_formatCtx->streams[m_audioStream]->codecpar) < 0)
         {
             av_log(NULL, AV_LOG_ERROR, "Failed to get audio codec context: %s\n", local_media_url.data());
             cleanup();
-            return -1;
+            return ret;
         }
         const AVCodec *audioCodec = avcodec_find_decoder(m_audioCodecCtx->codec_id);
         if (!audioCodec)
@@ -188,11 +262,11 @@ int FFmpegPlayer::process_player_task(const std::string &media_url)
             return -1;
         }
 
-        if (avcodec_open2(m_audioCodecCtx, audioCodec, nullptr) < 0)
+        if (int ret = avcodec_open2(m_audioCodecCtx, audioCodec, nullptr) < 0)
         {
             av_log(NULL, AV_LOG_ERROR, "Failed to open audio codec");
             cleanup();
-            return -1;
+            return ret;
         }
         m_audioFrame = av_frame_alloc();
         if (!m_audioFrame)
@@ -220,11 +294,11 @@ int FFmpegPlayer::process_player_task(const std::string &media_url)
             cleanup();
             return -1;
         }
-        if(int swr_init_ret = swr_init(m_swrCtx); swr_init_ret != 0)
+        if(int ret = swr_init(m_swrCtx) < 0)
         {
             av_log(NULL, AV_LOG_ERROR, "swr_init fail.\n");
             cleanup();
-            return -1;
+            return ret;
         }
         //swr_free
     }
@@ -239,20 +313,27 @@ int FFmpegPlayer::process_player_task(const std::string &media_url)
     while (av_read_frame(m_formatCtx, m_packet) >= 0)
     {
         //    PLAYER_STATUS_IDLE->PLAYER_STATUS_BLOCK->PLAYER_STATUS_PENDING_STOP->PLAYER_STATUS_IDLE
-        if(m_status == PLAYER_STATUS_BLOCK)
+        if(m_player_status.state() == PLAYER_STATUS_BLOCK)
         {
-//            av_log(NULL, AV_LOG_ERROR, "1");
+            //video stream
             if (m_packet->stream_index == m_videoStream)
             {
-//                av_log(NULL, AV_LOG_ERROR, "2");
                 if (avcodec_send_packet(m_codecCtx, m_packet) >= 0)
                 {
-//                    av_log(NULL, AV_LOG_ERROR, "3");
+                    if(m_recorder_status.state() == RECORDER_STATUS_RECORDING)
+                    {
+                        av_interleaved_write_frame(m_outStreamContext, m_packet);
+                    }
+                    else if(m_recorder_status.state() == RECORDER_STATUS_PENDING_STOP)
+                    {
+                        av_write_trailer(m_outStreamContext);
+                        cleanup_recorder();
+                        m_recorder_status.transition(RECORDER_STATUS_PENDING_STOP, RECORDER_STATUS_IDLE);
+                    }
                     while (avcodec_receive_frame(m_codecCtx, m_frame) >= 0)
                     {
-//                        av_log(NULL, AV_LOG_ERROR, "4");
                         // producer
-                        if(frame_consumed.load(std::memory_order_acquire))
+                        if(frame_consumed.load(std::memory_order_acquire) == true)
                         {
                             m_frame_cache.reset(new FrameCache());
                             if (!m_frame_cache->m_cache)
@@ -275,12 +356,13 @@ int FFmpegPlayer::process_player_task(const std::string &media_url)
                             sws_scale(m_swsCtx, m_frame->data, m_frame->linesize, 0, m_codecCtx->height,
                                       m_frame_cache->m_cache->data, m_frame_cache->m_cache->linesize);
 
-                            frame_consumed.store(false, std::memory_order_release);
                             on_new_frame_avaliable();
+                            frame_consumed.store(false, std::memory_order_release);
                         }
                     }
                 }
             }
+            //audio stream
             else if (m_packet->stream_index == m_audioStream)
             {
                 // Audio decoding code
@@ -312,7 +394,7 @@ int FFmpegPlayer::process_player_task(const std::string &media_url)
             }
             av_packet_unref(m_packet);
         }
-        else if(m_status == PLAYER_STATUS_PENDING_STOP)
+        else if(m_player_status.state() == PLAYER_STATUS_PENDING_STOP)
         {
             av_packet_unref(m_packet);
             cleanup();
@@ -326,6 +408,9 @@ int FFmpegPlayer::process_player_task(const std::string &media_url)
             return -1;
         }
     }
+    //EOF or error
+    av_packet_unref(m_packet);
+    cleanup();
     return 0;
 }
 
@@ -334,7 +419,9 @@ void FFmpegPlayer::on_start_preview(const std::string &media_url){};
 void FFmpegPlayer::on_new_frame_avaliable(){};
 void FFmpegPlayer::on_new_audio_frame_avaliable(std::shared_ptr<FrameCache> m_frame_cache){};
 void FFmpegPlayer::on_stop_preview(const std::string &media_url){};
-void FFmpegPlayer::on_ffmpeg_error(){};
+void FFmpegPlayer::on_ffmpeg_error(int errnum){};
+void FFmpegPlayer::on_start_record(const std::string& file){};
+void FFmpegPlayer::on_stop_record(const std::string& file){};
 
 void FFmpegPlayer::cleanup()
 {
@@ -389,4 +476,17 @@ void FFmpegPlayer::cleanup()
     }
     m_videoStream = -1;
     m_audioStream = -1;
+}
+void FFmpegPlayer::cleanup_recorder()
+{
+    if(m_outStreamContext)
+    {
+        avio_close(m_outStreamContext->pb);
+        avformat_free_context(m_outStreamContext);
+        m_outStreamContext = nullptr;
+    }
+    if(m_outStream)
+    {
+        m_outStream = nullptr;
+    }
 }

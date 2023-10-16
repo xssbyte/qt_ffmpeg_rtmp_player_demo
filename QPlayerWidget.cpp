@@ -36,6 +36,16 @@ void QPlayerWidget::stop_preview()
     FFmpegPlayer::stop_preview();
     m_audioPlayer->stop_consume_audio();
 }
+void QPlayerWidget::start_local_record(const std::string &output_file)
+{
+    FFmpegPlayer::start_local_record(output_file);
+}
+void QPlayerWidget::stop_local_record()
+{
+    FFmpegPlayer::stop_local_record();
+}
+
+
 void QPlayerWidget::on_new_frame_avaliable()
 {
     //update自动合并多余的重绘

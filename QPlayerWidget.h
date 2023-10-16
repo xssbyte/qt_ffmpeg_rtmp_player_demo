@@ -31,6 +31,9 @@ public:
 public slots:
     void start_preview(const std::string &media_url);
     void stop_preview();
+    void start_local_record(const std::string &output_file);
+    void stop_local_record();
+
 protected:
     void paintEvent(QPaintEvent *event) override;
 

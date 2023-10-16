@@ -37,7 +37,7 @@
      </attribute>
     </widget>
    </widget>
-   <widget class="QWidget" name="">
+   <widget class="QWidget" name="layoutWidget">
     <property name="geometry">
      <rect>
       <x>20</x>
@@ -78,16 +78,16 @@
         </widget>
        </item>
        <item>
-        <widget class="QPushButton" name="button_start_test">
+        <widget class="QPushButton" name="button_start_record">
          <property name="text">
-          <string>start_test</string>
+          <string>start_record</string>
          </property>
         </widget>
        </item>
        <item>
-        <widget class="QPushButton" name="button_stop_test">
+        <widget class="QPushButton" name="button_stop_record">
          <property name="text">
-          <string>stop_test</string>
+          <string>stop_record</string>
          </property>
         </widget>
        </item>
