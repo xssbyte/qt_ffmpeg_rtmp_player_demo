@@ -1,10 +1,11 @@
 #include <QPlayerWidget.h>
+#include <QDateTime> // for log
 
 QPlayerWidget::QPlayerWidget(QWidget *parent) : QWidget(parent),
     m_audioPlayer(new QAudioPlayer(8192 * 16))
 {
     // Set size and background color
-    qDebug() << "FFmpeg version: " << av_version_info();
+//    qDebug() << "FFmpeg version: " << av_version_info();
     QPalette palette = this->palette();
     palette.setColor(QPalette::Background, Qt::black);
     setAutoFillBackground(true);
@@ -12,7 +13,7 @@ QPlayerWidget::QPlayerWidget(QWidget *parent) : QWidget(parent),
 }
 void QPlayerWidget::paintEvent(QPaintEvent *event)
 {
-    qDebug() << __FUNCTION__;
+    qDebug() << __FUNCTION__ << QDateTime::currentDateTime().toMSecsSinceEpoch();
     if(!FFmpegPlayer::frame_consumed.load(std::memory_order_acquire))
     {
         QPainter painter(this);
@@ -35,6 +36,16 @@ void QPlayerWidget::stop_preview()
     FFmpegPlayer::stop_preview();
     m_audioPlayer->stop_consume_audio();
 }
+void QPlayerWidget::start_local_record(const std::string &output_file)
+{
+    FFmpegPlayer::start_local_record(output_file);
+}
+void QPlayerWidget::stop_local_record()
+{
+    FFmpegPlayer::stop_local_record();
+}
+
+
 void QPlayerWidget::on_new_frame_avaliable()
 {
     //update自动合并多余的重绘
