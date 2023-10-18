@@ -5,7 +5,7 @@ QPlayerWidget::QPlayerWidget(QWidget *parent) : QWidget(parent),
     m_audioPlayer(new QAudioPlayer(8192 * 16))
 {
     // Set size and background color
-    qDebug() << "FFmpeg version: " << av_version_info();
+//    qDebug() << "FFmpeg version: " << av_version_info();
     QPalette palette = this->palette();
     palette.setColor(QPalette::Background, Qt::black);
     setAutoFillBackground(true);

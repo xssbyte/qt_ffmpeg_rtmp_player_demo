@@ -13,6 +13,7 @@ FFmpegPlayer::FFmpegPlayer()
     avformat_network_init();
     av_log_set_level(AV_LOG_INFO);
     av_log_set_callback(console_log_callback);
+    av_log(NULL, AV_LOG_ERROR, "[FFMPEG_VERION_INFO]%s\n", av_version_info());
 
     av_dict_set(&m_options, "reconnect", "1", 0);
     av_dict_set(&m_options, "fflags", "nobuffer", 0);
@@ -24,99 +25,104 @@ FFmpegPlayer::~FFmpegPlayer()
 {
     cleanup();
 }
-
-//    PLAYER_STATUS_IDLE->PLAYER_STATUS_BLOCK->PLAYER_STATUS_PENDING_STOP->PLAYER_STATUS_IDLE
+int FFmpegPlayer::start_player(const std::string &media_url, int option_ret)
+{
+    if(option_ret != 0)
+        return option_ret;
+    return start_preview(media_url);
+}
 int FFmpegPlayer::start_preview(const std::string &media_url)
 {
-    std::lock_guard<std::mutex> lk(player_lock);
-    //PLAYER_STATUS_IDLE
-    if(m_player_status.state() == PLAYER_STATUS_IDLE)
+    std::lock_guard<std::mutex> pl(player_mutex);
+    if(player_status == PLAYER_STATUS_IDLE)
     {
         std::future<int> futureResult = std::async(std::launch::async, [&, media_url](){
-            if(m_player_status.transition(PLAYER_STATUS_IDLE, PLAYER_STATUS_BLOCK) == true)
+            on_start_preview(media_url);
+            player_status = PLAYER_STATUS_BLOCK;
+            if(int ret = process_player_task(media_url) < 0)
             {
-                on_start_preview(media_url);
-                return this->process_player_task(media_url);
+                return ret;
             }
-            else
-            {
-                //status changed
-                return -1;
-            }
+            return 0;
         });
         //future observer
-        std::thread([&, media_url,futureResult = std::move(futureResult), p_status = std::ref(m_player_status)]() mutable {
-            int result = futureResult.get();
-            if(result != 0)
+        std::thread([&, media_url, futureResult = std::move(futureResult)]() mutable {
+            int ret = futureResult.get();
+            if(ret < 0)
             {
-                on_ffmpeg_error(result);
+                on_ffmpeg_error(ret);
             }
-            if(m_player_status.transition(PLAYER_STATUS_PENDING_STOP, PLAYER_STATUS_IDLE) == true)
-            {
-                //You can block on_stop_preview && You can restart preview in on_stop_preview
-                on_stop_preview(media_url);
-            }
-            else
-            {
-                //unexpected status(unreachable)
-                av_log(NULL, AV_LOG_ERROR, "Reached an unexpected state %d\n", m_player_status.state());
-            }
+            //player thread not running
+            player_status = PLAYER_STATUS_IDLE;
+            //You can block on_stop_preview && You can restart preview in on_stop_preview
+            on_stop_preview(media_url);
         }).detach();
         return 0;
     }
     else
     {
-        //PLAYER_STATUS_BLOCK/PLAYER_STATUS_PENDING_STOP
         return -1;
     }
 }
 int FFmpegPlayer::stop_preview()
 {
-    std::lock_guard<std::mutex> lk(player_lock);
-    //PLAYER_STATUS_BLOCK->PLAYER_STATUS_PENDING_STOP
-    return m_player_status.transition(PLAYER_STATUS_BLOCK, PLAYER_STATUS_PENDING_STOP) == true;
+    std::lock_guard<std::mutex> pl(player_mutex);
+    if(player_status == PLAYER_STATUS_BLOCK)
+    {
+        player_status = PLAYER_STATUS_PENDING_STOP;
+        return 0;
+    }
+    return -1;
 }
-
 int FFmpegPlayer::start_local_record(const std::string &output_file)
 {
-    std::lock_guard<std::mutex> lk(player_lock);
-    if(m_player_status.state() == PLAYER_STATUS_BLOCK)
+    std::lock_guard<std::mutex> pl(player_mutex);
+    std::lock_guard<std::mutex> rl(recorder_mutex);
+    if((player_status == PLAYER_STATUS_IDLE) && (recorder_status == RECORDER_STATUS_IDLE))
     {
-        //RECORDER_STATUS_IDLE->RECORDER_STATUS_RECORDING
-        if(m_recorder_status.state() == RECORDER_STATUS_IDLE)
-        {
-            process_recorder_task(output_file);
-            return m_recorder_status.transition(RECORDER_STATUS_IDLE, RECORDER_STATUS_RECORDING) == true;
-        }
-        else if(m_player_status.state() == PLAYER_STATUS_IDLE)
-        {
-            //
-            return -1;
-        }
+        recorder_status = RECORDER_STATUS_PENDING_START;
+        recorder_file_path = output_file;
+
+        return 0;
     }
-    else
+    if((player_status == PLAYER_STATUS_BLOCK) && (recorder_status == RECORDER_STATUS_IDLE))
     {
-        return -1;
+        if(int ret = recorder_begin(output_file) < 0)
+        {
+            return ret;
+        }
+        recorder_status = RECORDER_STATUS_RECORDING;
+        return 0;
     }
     return -1;
 }
 int FFmpegPlayer::stop_local_record()
 {
-    std::lock_guard<std::mutex> lk(player_lock);
-    //RECORDER_STATUS_RECORDING->RECORDER_STATUS_PENDING_STOP
-    return m_recorder_status.transition(RECORDER_STATUS_RECORDING, RECORDER_STATUS_PENDING_STOP) == true;
+    std::lock_guard<std::mutex> pl(player_mutex);
+    std::lock_guard<std::mutex> r1(recorder_mutex);
+    if(recorder_status == RECORDER_STATUS_RECORDING)
+    {
+        recorder_status = RECORDER_STATUS_PENDING_STOP;
+        return 0;
+    }
+    if(recorder_status == RECORDER_STATUS_PENDING_START)
+    {
+        recorder_status = RECORDER_STATUS_IDLE;
+        return 0;
+    }
+    return -1;
 }
-int FFmpegPlayer::process_recorder_task(const std::string& file)
+int FFmpegPlayer::recorder_begin(const std::string& file)
 {
-    std::string local_file = file;
+    recorder_file_path = file;
     m_outStreamContext = avformat_alloc_context();
-    if (int ret = avformat_alloc_output_context2(&m_outStreamContext, NULL, NULL, local_file.c_str()) < 0)
+    if (int ret = avformat_alloc_output_context2(&m_outStreamContext, NULL, NULL, recorder_file_path.c_str()) < 0)
     {
         av_log(NULL, AV_LOG_ERROR, "Failed to allocate AVFormatContext");
         cleanup_recorder();
         return ret;
     }
-    if (int ret = avio_open(&m_outStreamContext->pb, local_file.c_str(), AVIO_FLAG_WRITE) < 0)
+    if (int ret = avio_open(&m_outStreamContext->pb, recorder_file_path.c_str(), AVIO_FLAG_WRITE) < 0)
     {
         av_log(NULL, AV_LOG_ERROR, "Failed to open output file");
         cleanup_recorder();
@@ -129,7 +135,7 @@ int FFmpegPlayer::process_recorder_task(const std::string& file)
         cleanup_recorder();
         return -1;
     }
-    if(int ret = avcodec_parameters_copy(m_outStream->codecpar, m_codecParam) < 0)
+    if(int ret = avcodec_parameters_copy(m_outStream->codecpar, m_videoCodecParam) < 0)
     {
         av_log(NULL, AV_LOG_ERROR, "Failed to copy avcodec param");
         cleanup_recorder();
@@ -141,9 +147,21 @@ int FFmpegPlayer::process_recorder_task(const std::string& file)
         cleanup_recorder();
         return ret;
     }
-    av_log(NULL, AV_LOG_ERROR, "start to record");
+    av_log(NULL, AV_LOG_DEBUG, "start recorder");
     return 0;
 }
+int FFmpegPlayer::recorder_end()
+{
+    if (int ret = av_write_trailer(m_outStreamContext) < 0)
+    {
+        av_log(NULL, AV_LOG_ERROR, "Failed to write output trailer");
+        cleanup_recorder();
+        return ret;
+    }
+    cleanup_recorder();
+    return 0;
+}
+
 int FFmpegPlayer::process_player_task(const std::string &media_url)
 {
     std::string local_media_url = media_url;
@@ -172,7 +190,7 @@ int FFmpegPlayer::process_player_task(const std::string &media_url)
         if (m_formatCtx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO)
         {
             m_videoStream = i;
-            m_codecParam = m_formatCtx->streams[i]->codecpar;
+            m_videoCodecParam = m_formatCtx->streams[i]->codecpar;
             av_log(NULL, AV_LOG_ERROR, "m_videoStream: %d\n", i);
         }
         else if (m_formatCtx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_AUDIO)
@@ -315,47 +333,19 @@ int FFmpegPlayer::process_player_task(const std::string &media_url)
         cleanup();
         return -1;
     }
-    //initialization finish,load extra features sync
-    on_param_initialized();
-
-    const auto &process_extra_feature = [&](){
-        if(m_recorder_status.state() == RECORDER_STATUS_RECORDING)
-        {
-            av_interleaved_write_frame(m_outStreamContext, m_packet);
-        }
-        else if(m_recorder_status.state() == RECORDER_STATUS_PENDING_STOP)
-        {
-            av_write_trailer(m_outStreamContext);
-            cleanup_recorder();
-            m_recorder_status.transition(RECORDER_STATUS_PENDING_STOP, RECORDER_STATUS_IDLE);
-        }
-    };
-    const auto &terminal_extra_feature = [&](){
-        if(m_recorder_status.state() == RECORDER_STATUS_RECORDING)
-        {
-            av_write_trailer(m_outStreamContext);
-            cleanup_recorder();
-            m_recorder_status.transition(RECORDER_STATUS_RECORDING, RECORDER_STATUS_IDLE);
-        }
-        else if(m_recorder_status.state() == RECORDER_STATUS_PENDING_STOP)
-        {
-            av_write_trailer(m_outStreamContext);
-            cleanup_recorder();
-            m_recorder_status.transition(RECORDER_STATUS_PENDING_STOP, RECORDER_STATUS_IDLE);
-        }
-    };
+    //initialization finish
+    on_stream_avaliable();
 
     while (av_read_frame(m_formatCtx, m_packet) >= 0)
     {
-        //    PLAYER_STATUS_IDLE->PLAYER_STATUS_BLOCK->PLAYER_STATUS_PENDING_STOP->PLAYER_STATUS_IDLE
-        if(m_player_status.state() == PLAYER_STATUS_BLOCK)
+        if(player_status == PLAYER_STATUS_BLOCK)
         {
             //video stream
             if (m_packet->stream_index == m_videoStream)
             {
                 if (avcodec_send_packet(m_codecCtx, m_packet) >= 0)
                 {
-                    process_extra_feature();
+                    on_packet_received();
                     while (avcodec_receive_frame(m_codecCtx, m_frame) >= 0)
                     {
                         // producer
@@ -365,7 +355,7 @@ int FFmpegPlayer::process_player_task(const std::string &media_url)
                             if (!m_frame_cache->m_cache)
                             {
                                 av_log(NULL, AV_LOG_ERROR, "Failed to allocate AVFrame");
-                                terminal_extra_feature();
+                                on_stream_unavaliable();
                                 av_packet_unref(m_packet);
                                 cleanup();
                                 return -1;
@@ -376,7 +366,7 @@ int FFmpegPlayer::process_player_task(const std::string &media_url)
                             if (av_frame_get_buffer(m_frame_cache->m_cache, 0) < 0)
                             {
                                 av_log(NULL, AV_LOG_ERROR, "Failed to allocate RGB buffer");
-                                terminal_extra_feature();
+                                on_stream_unavaliable();
                                 av_packet_unref(m_packet);
                                 cleanup();
                                 return -1;
@@ -410,7 +400,7 @@ int FFmpegPlayer::process_player_task(const std::string &media_url)
                         if (av_frame_get_buffer(m_audio_frame_cache->m_cache, 0) < 0)
                         {
                             av_log(NULL, AV_LOG_ERROR, "Failed to allocate audio buffer");
-                            terminal_extra_feature();
+                            on_stream_unavaliable();
                             av_packet_unref(m_packet);
                             cleanup();
                             return -1;
@@ -423,9 +413,9 @@ int FFmpegPlayer::process_player_task(const std::string &media_url)
             }
             av_packet_unref(m_packet);
         }
-        else if(m_player_status.state() == PLAYER_STATUS_PENDING_STOP)
+        else if(player_status == PLAYER_STATUS_PENDING_STOP)
         {
-            terminal_extra_feature();
+            on_stream_unavaliable();
             av_packet_unref(m_packet);
             cleanup();
             return 0;
@@ -433,30 +423,98 @@ int FFmpegPlayer::process_player_task(const std::string &media_url)
         else
         {
             av_log(NULL, AV_LOG_ERROR, "Unexpected Status!");
-            terminal_extra_feature();
+            on_stream_unavaliable();
             av_packet_unref(m_packet);
             cleanup();
             return -1;
         }
     }
     //EOF or error
-    terminal_extra_feature();
+    on_stream_unavaliable();
     av_packet_unref(m_packet);
     cleanup();
     return 0;
 }
 
 
-void FFmpegPlayer::on_start_preview(const std::string &media_url){};
+
 void FFmpegPlayer::on_new_frame_avaliable(){};
 void FFmpegPlayer::on_new_audio_frame_avaliable(std::shared_ptr<FrameCache> m_frame_cache){};
-void FFmpegPlayer::on_stop_preview(const std::string &media_url){};
-void FFmpegPlayer::on_ffmpeg_error(int errnum){};
-void FFmpegPlayer::on_start_record(const std::string& file){};
-void FFmpegPlayer::on_stop_record(const std::string& file){};
+void FFmpegPlayer::on_start_preview(const std::string &media_url){
+    av_log(NULL, AV_LOG_DEBUG, "[%s] %s\n", __FUNCTION__, media_url.c_str());
+};
+void FFmpegPlayer::on_stop_preview(const std::string &media_url){
+    av_log(NULL, AV_LOG_DEBUG, "[%s] %s\n", __FUNCTION__, media_url.c_str());
+};
+void FFmpegPlayer::on_ffmpeg_error(int errnum){
+    av_log(NULL, AV_LOG_ERROR, "[%s] %d\n", __FUNCTION__, errnum);
+};
+void FFmpegPlayer::on_recorder_start(const std::string& file){
+    av_log(NULL, AV_LOG_DEBUG, "[%s] %s\n", __FUNCTION__, file.c_str());
+};
+void FFmpegPlayer::on_recorder_stop(const std::string& file){
+    av_log(NULL, AV_LOG_DEBUG, "[%s] %s\n", __FUNCTION__, file.c_str());
+};
+void FFmpegPlayer::on_recorder_error(int errnum){
+    av_log(NULL, AV_LOG_ERROR, "[%s] %d\n", __FUNCTION__, errnum);
+};
 
-void FFmpegPlayer::on_param_initialized(){};
 
+void FFmpegPlayer::on_stream_avaliable()
+{
+    std::lock_guard<std::mutex> rl(recorder_mutex);
+    if(recorder_status == RECORDER_STATUS_PENDING_START)
+    {
+        if(int ret = recorder_begin(recorder_file_path) < 0)
+        {
+            recorder_status = RECORDER_STATUS_IDLE;
+            on_recorder_error(ret);
+        }
+        else
+        {
+            recorder_status = RECORDER_STATUS_RECORDING;
+        }
+    }
+}
+void FFmpegPlayer::on_packet_received()
+{
+    std::lock_guard<std::mutex> rl(recorder_mutex);
+    if(recorder_status == RECORDER_STATUS_RECORDING)
+    {
+        if(int ret = av_interleaved_write_frame(m_outStreamContext, m_packet) < 0)
+        {
+            on_recorder_error(ret);
+        }
+    }
+    else if(recorder_status == RECORDER_STATUS_PENDING_STOP)
+    {
+        if(int ret = recorder_end() < 0)
+        {
+            recorder_status = RECORDER_STATUS_IDLE;
+            on_recorder_error(ret);
+        }
+        else
+        {
+            recorder_status = RECORDER_STATUS_IDLE;
+        }
+    }
+}
+void FFmpegPlayer::on_stream_unavaliable()
+{
+    std::lock_guard<std::mutex> rl(recorder_mutex);
+    if(recorder_status == RECORDER_STATUS_RECORDING)
+    {
+        if(int ret = recorder_end() < 0)
+        {
+            recorder_status = RECORDER_STATUS_IDLE;
+            on_recorder_error(ret);
+        }
+        else
+        {
+            recorder_status = RECORDER_STATUS_IDLE;
+        }
+    }
+}
 void FFmpegPlayer::cleanup()
 {
     // Free resources
@@ -492,6 +550,10 @@ void FFmpegPlayer::cleanup()
         av_frame_free(&m_audioFrame);
         m_audioFrame = nullptr;
     }
+    if (m_videoCodecParam)
+    {
+        m_videoCodecParam = nullptr;
+    }
     if (m_formatCtx)
     {
         avformat_close_input(&m_formatCtx);
@@ -522,9 +584,5 @@ void FFmpegPlayer::cleanup_recorder()
     if(m_outStream)
     {
         m_outStream = nullptr;
-    }
-    if(m_codecParam)
-    {
-        m_codecParam = nullptr;
     }
 }

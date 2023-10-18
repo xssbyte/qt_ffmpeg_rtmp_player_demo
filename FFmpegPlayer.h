@@ -7,6 +7,7 @@
 #include <mutex>
 #include <future>
 #include <functional>
+#include <vector>
 
 extern "C" {
 #include <libavcodec/avcodec.h>
@@ -30,6 +31,15 @@ public:
 public:
 
 public:
+
+    /**
+     * @brief start_player 等同于start_preview,但是可以和其他选项一起启动,只是简单判断其他选项是否正确设置上了,关闭调用stop_preview(),stop_preview()会按顺序停止所有功能
+     * 比如我要启动预览的同时,启动录制.就可以这样调用:start_player(url, start_local_record(file));
+     * @param media_url 等于start_preview
+     * @param option_ret 其他选项的返回值的和
+     * @return 0成功
+     */
+    int start_player(const std::string &media_url, int option_ret = 0);
     /**
      * @brief start_preview 异步的开始播放任务，启动ffmpeg解析url播放，成功会回调on_start_preview
      * @param media_url 媒体url
@@ -37,12 +47,12 @@ public:
      */
     int start_preview(const std::string &media_url);
     /**
-     * @brief stop_preview 异步的停止预览，清理ffmpeg资源，异步停止播放线程，成功停止会回调on_stop_preview
+     * @brief stop_preview 异步的停止预览，清理ffmpeg资源，异步停止播放线程，成功停止会回调on_stop_preview.也会停止其他功能
      * @return 0成功
      */
     int stop_preview();
     /**
-     * @brief start_local_record 异步的开始录像，rtsp转mp4保存，预览时可以录像，非预览时不能录像，成功会回调on_start_record
+     * @brief start_local_record 异步的开始录制视频帧，rtsp转mp4保存，预览时可以录像，非预览时不能录像，成功会回调on_start_record
      * @return 0成功
      */
     int start_local_record(const std::string &output_file);
@@ -51,7 +61,7 @@ public:
      * @return 0成功
      */
     int stop_local_record();
-
+//TODO:errno
 //    enum FFmpegPlayerErrno
 //    {
 //        STATUS_OK = 0,
@@ -83,12 +93,15 @@ protected:
     //播放线程错误回调
     virtual void on_ffmpeg_error(int errnum);
     //开始录像的回调
-    virtual void on_start_record(const std::string& file);
+    virtual void on_recorder_start(const std::string& file);
     //停止录像的回调
-    virtual void on_stop_record(const std::string& file);
+    virtual void on_recorder_stop(const std::string& file);
+    //录像出错的回调
+    virtual void on_recorder_error(int errnum);
 
-    //额外feature可用的回调，当流初始化完成，这个回调被调用。
-    void on_param_initialized();
+    void on_stream_avaliable();
+    void on_packet_received();
+    void on_stream_unavaliable();
 
     //单生产者单消费者模型，可以使用原子量同步并避免memcpy
     std::atomic_bool frame_consumed = true;
@@ -96,39 +109,29 @@ protected:
     std::shared_ptr<FrameCache> m_audio_frame_cache;
 private:
 
-    //播放器和录像的状态机实现
     enum PlayerStatus : uint8_t
     {
         PLAYER_STATUS_IDLE,
-
         PLAYER_STATUS_BLOCK,
         PLAYER_STATUS_PENDING_STOP
     };
     enum RecorderStatus : uint8_t
     {
         RECORDER_STATUS_IDLE,
+        RECORDER_STATUS_PENDING_START,
         RECORDER_STATUS_RECORDING,
         RECORDER_STATUS_PENDING_STOP
     };
-    template <typename T, typename = std::enable_if_t<std::is_enum_v<T> && std::is_same_v<std::underlying_type_t<T>, uint8_t>>>
-    class StateMachine {
-    public:
-        StateMachine(T status) : currentState(status) {}
-        bool transition(uint8_t from, uint8_t to) {
-            return currentState.compare_exchange_strong(from, to, std::memory_order_release, std::memory_order_relaxed);
-        }
-        uint8_t state() const {
-            return currentState.load(std::memory_order_acquire);
-        }
-    private:
-        std::atomic_uint8_t currentState;
-    };
 
     int process_player_task(const std::string &media_url);
-    int process_recorder_task(const std::string& file);
     void cleanup();
+
+    int recorder_begin(const std::string& file);
+    int recorder_end();
+    std::string recorder_file_path;
     void cleanup_recorder();
 
+    //player
     AVFormatContext *m_formatCtx = nullptr;
     AVCodecContext *m_codecCtx = nullptr;
     AVCodecContext *m_audioCodecCtx = nullptr;
@@ -138,16 +141,17 @@ private:
     AVPacket *m_packet = nullptr;
     SwsContext *m_swsCtx = nullptr;
     SwrContext *m_swrCtx = nullptr;
+    AVCodecParameters *m_videoCodecParam = nullptr;
 
-    //for record
+    //recorder
     AVFormatContext *m_outStreamContext = nullptr;
-    AVCodecParameters *m_codecParam = nullptr;
     AVStream *m_outStream = nullptr;
 
-    std::mutex player_lock;
+    std::mutex player_mutex;
+    std::mutex recorder_mutex;
+    PlayerStatus player_status = PLAYER_STATUS_IDLE;
+    RecorderStatus recorder_status = RECORDER_STATUS_IDLE;
 
-    StateMachine<PlayerStatus> m_player_status = PLAYER_STATUS_IDLE;
-    StateMachine<RecorderStatus> m_recorder_status = RECORDER_STATUS_IDLE;
     int m_videoStream = -1;
     int m_audioStream = -1;
 };
