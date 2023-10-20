@@ -37,9 +37,8 @@ public slots:
     void paintGL() override;
 
 protected:
-    void on_start_preview(const std::string& media_url) override;
-    void on_stop_preview(const std::string& media_url) override;
-
+    void on_preview_start(const std::string& media_url) override;
+    void on_preview_stop(const std::string& media_url) override;
     void on_new_frame_avaliable() override;
     void on_new_audio_frame_avaliable(std::shared_ptr<FrameCache> m_frame_cache) override;
 private:
