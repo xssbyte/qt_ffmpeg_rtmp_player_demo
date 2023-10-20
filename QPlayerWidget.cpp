@@ -13,7 +13,7 @@ QPlayerWidget::QPlayerWidget(QWidget *parent) : QWidget(parent),
 }
 void QPlayerWidget::paintEvent(QPaintEvent *event)
 {
-    qDebug() << __FUNCTION__ << QDateTime::currentDateTime().toMSecsSinceEpoch();
+//    qDebug() << __FUNCTION__ << QDateTime::currentDateTime().toMSecsSinceEpoch();
     if(!FFmpegPlayer::frame_consumed.load(std::memory_order_acquire))
     {
         QPainter painter(this);

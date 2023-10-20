@@ -38,7 +38,7 @@ void QGLPlayerWidget::resizeGL(int w, int h)
 }
 void QGLPlayerWidget::paintGL()
 {
-    qDebug() << __FUNCTION__ << QDateTime::currentDateTime().toMSecsSinceEpoch();
+//    qDebug() << __FUNCTION__ << QDateTime::currentDateTime().toMSecsSinceEpoch();
     if(!FFmpegPlayer::frame_consumed.load(std::memory_order_acquire))
     {
         if(init_texture_flag.load(std::memory_order_acquire))
@@ -72,15 +72,15 @@ void QGLPlayerWidget::on_new_frame_avaliable()
 {
     this->update();
 }
-void QGLPlayerWidget::on_start_preview([[maybe_unused]]const std::string& media_url)
+void QGLPlayerWidget::on_preview_start(const std::string& media_url)
 {
-    qDebug() << __FUNCTION__ ;
-    init_texture_flag.store(true, std::memory_order_release);    
+//    qDebug() << __FUNCTION__ ;
+    init_texture_flag.store(true, std::memory_order_release);
 }
 
-void QGLPlayerWidget::on_stop_preview([[maybe_unused]]const std::string& media_url)
+void QGLPlayerWidget::on_preview_stop(const std::string& media_url)
 {
-    qDebug() << __FUNCTION__ ;
+//    qDebug() << __FUNCTION__ ;
     init_texture_flag.store(false, std::memory_order_release);
 }
 

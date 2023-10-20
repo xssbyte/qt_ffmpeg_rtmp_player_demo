@@ -82,22 +82,23 @@ protected:
         }
         AVFrame *m_cache;
     };
+    //播放线程错误回调
+    virtual void on_player_error(int errnum);
+
     //播放线程启动成功回调
-    virtual void on_start_preview(const std::string& media_url);
+    virtual void on_preview_start(const std::string& media_url);
+    //播放线程关闭回调，不管是否报错，播放线程结束就回调,可以在里面重启播放器
+    virtual void on_preview_stop(const std::string& media_url);
+
     //新的video帧可用回调，这里不传入帧的数据，帧使用原子量同步。也可以传帧数据，同步消费或者存入缓冲区
     virtual void on_new_frame_avaliable();
     //新的audio帧可用回调，传入帧的数据,同步消费或者存入缓冲区
     virtual void on_new_audio_frame_avaliable(std::shared_ptr<FrameCache> m_frame_cache);
-    //播放线程关闭回调，不管是否报错，播放线程结束就回调
-    virtual void on_stop_preview(const std::string& media_url);
-    //播放线程错误回调
-    virtual void on_ffmpeg_error(int errnum);
+
     //开始录像的回调
     virtual void on_recorder_start(const std::string& file);
     //停止录像的回调
     virtual void on_recorder_stop(const std::string& file);
-    //录像出错的回调
-    virtual void on_recorder_error(int errnum);
 
     void on_stream_avaliable();
     void on_packet_received();
@@ -112,7 +113,8 @@ private:
     enum PlayerStatus : uint8_t
     {
         PLAYER_STATUS_IDLE,
-        PLAYER_STATUS_BLOCK,
+        PLAYER_STATUS_PENDING_START,
+        PLAYER_STATUS_PLAYING,
         PLAYER_STATUS_PENDING_STOP
     };
     enum RecorderStatus : uint8_t

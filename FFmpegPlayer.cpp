@@ -37,8 +37,8 @@ int FFmpegPlayer::start_preview(const std::string &media_url)
     if(player_status == PLAYER_STATUS_IDLE)
     {
         std::future<int> futureResult = std::async(std::launch::async, [&, media_url](){
-            on_start_preview(media_url);
-            player_status = PLAYER_STATUS_BLOCK;
+            player_status = PLAYER_STATUS_PENDING_START;
+            on_preview_start(media_url);
             if(int ret = process_player_task(media_url) < 0)
             {
                 return ret;
@@ -50,12 +50,12 @@ int FFmpegPlayer::start_preview(const std::string &media_url)
             int ret = futureResult.get();
             if(ret < 0)
             {
-                on_ffmpeg_error(ret);
+                on_player_error(ret);
             }
             //player thread not running
             player_status = PLAYER_STATUS_IDLE;
             //You can block on_stop_preview && You can restart preview in on_stop_preview
-            on_stop_preview(media_url);
+            on_preview_stop(media_url);
         }).detach();
         return 0;
     }
@@ -67,7 +67,7 @@ int FFmpegPlayer::start_preview(const std::string &media_url)
 int FFmpegPlayer::stop_preview()
 {
     std::lock_guard<std::mutex> pl(player_mutex);
-    if(player_status == PLAYER_STATUS_BLOCK)
+    if(player_status == PLAYER_STATUS_PLAYING)
     {
         player_status = PLAYER_STATUS_PENDING_STOP;
         return 0;
@@ -82,10 +82,9 @@ int FFmpegPlayer::start_local_record(const std::string &output_file)
     {
         recorder_status = RECORDER_STATUS_PENDING_START;
         recorder_file_path = output_file;
-
         return 0;
     }
-    if((player_status == PLAYER_STATUS_BLOCK) && (recorder_status == RECORDER_STATUS_IDLE))
+    if((player_status == PLAYER_STATUS_PLAYING) && (recorder_status == RECORDER_STATUS_IDLE))
     {
         if(int ret = recorder_begin(output_file) < 0)
         {
@@ -103,11 +102,6 @@ int FFmpegPlayer::stop_local_record()
     if(recorder_status == RECORDER_STATUS_RECORDING)
     {
         recorder_status = RECORDER_STATUS_PENDING_STOP;
-        return 0;
-    }
-    if(recorder_status == RECORDER_STATUS_PENDING_START)
-    {
-        recorder_status = RECORDER_STATUS_IDLE;
         return 0;
     }
     return -1;
@@ -338,7 +332,7 @@ int FFmpegPlayer::process_player_task(const std::string &media_url)
 
     while (av_read_frame(m_formatCtx, m_packet) >= 0)
     {
-        if(player_status == PLAYER_STATUS_BLOCK)
+        if(player_status == PLAYER_STATUS_PLAYING)
         {
             //video stream
             if (m_packet->stream_index == m_videoStream)
@@ -422,7 +416,7 @@ int FFmpegPlayer::process_player_task(const std::string &media_url)
         }
         else
         {
-            av_log(NULL, AV_LOG_ERROR, "Unexpected Status!");
+            av_log(NULL, AV_LOG_ERROR, "Unexpected Status! %d", player_status);
             on_stream_unavaliable();
             av_packet_unref(m_packet);
             cleanup();
@@ -440,13 +434,13 @@ int FFmpegPlayer::process_player_task(const std::string &media_url)
 
 void FFmpegPlayer::on_new_frame_avaliable(){};
 void FFmpegPlayer::on_new_audio_frame_avaliable(std::shared_ptr<FrameCache> m_frame_cache){};
-void FFmpegPlayer::on_start_preview(const std::string &media_url){
+void FFmpegPlayer::on_preview_start(const std::string &media_url){
     av_log(NULL, AV_LOG_DEBUG, "[%s] %s\n", __FUNCTION__, media_url.c_str());
 };
-void FFmpegPlayer::on_stop_preview(const std::string &media_url){
+void FFmpegPlayer::on_preview_stop(const std::string &media_url){
     av_log(NULL, AV_LOG_DEBUG, "[%s] %s\n", __FUNCTION__, media_url.c_str());
 };
-void FFmpegPlayer::on_ffmpeg_error(int errnum){
+void FFmpegPlayer::on_player_error(int errnum){
     av_log(NULL, AV_LOG_ERROR, "[%s] %d\n", __FUNCTION__, errnum);
 };
 void FFmpegPlayer::on_recorder_start(const std::string& file){
@@ -455,24 +449,26 @@ void FFmpegPlayer::on_recorder_start(const std::string& file){
 void FFmpegPlayer::on_recorder_stop(const std::string& file){
     av_log(NULL, AV_LOG_DEBUG, "[%s] %s\n", __FUNCTION__, file.c_str());
 };
-void FFmpegPlayer::on_recorder_error(int errnum){
-    av_log(NULL, AV_LOG_ERROR, "[%s] %d\n", __FUNCTION__, errnum);
-};
-
 
 void FFmpegPlayer::on_stream_avaliable()
 {
+    std::lock_guard<std::mutex> pl(player_mutex);
     std::lock_guard<std::mutex> rl(recorder_mutex);
+    if(player_status == PLAYER_STATUS_PENDING_START)
+    {
+        player_status = PLAYER_STATUS_PLAYING;
+    }
     if(recorder_status == RECORDER_STATUS_PENDING_START)
     {
         if(int ret = recorder_begin(recorder_file_path) < 0)
         {
             recorder_status = RECORDER_STATUS_IDLE;
-            on_recorder_error(ret);
+            on_player_error(ret);
         }
         else
         {
             recorder_status = RECORDER_STATUS_RECORDING;
+            on_recorder_start(recorder_file_path);
         }
     }
 }
@@ -483,7 +479,7 @@ void FFmpegPlayer::on_packet_received()
     {
         if(int ret = av_interleaved_write_frame(m_outStreamContext, m_packet) < 0)
         {
-            on_recorder_error(ret);
+            on_player_error(ret);
         }
     }
     else if(recorder_status == RECORDER_STATUS_PENDING_STOP)
@@ -491,7 +487,7 @@ void FFmpegPlayer::on_packet_received()
         if(int ret = recorder_end() < 0)
         {
             recorder_status = RECORDER_STATUS_IDLE;
-            on_recorder_error(ret);
+            on_player_error(ret);
         }
         else
         {
@@ -502,16 +498,18 @@ void FFmpegPlayer::on_packet_received()
 void FFmpegPlayer::on_stream_unavaliable()
 {
     std::lock_guard<std::mutex> rl(recorder_mutex);
+    player_status = PLAYER_STATUS_PENDING_STOP;
     if(recorder_status == RECORDER_STATUS_RECORDING)
     {
         if(int ret = recorder_end() < 0)
         {
             recorder_status = RECORDER_STATUS_IDLE;
-            on_recorder_error(ret);
+            on_player_error(ret);
         }
         else
         {
             recorder_status = RECORDER_STATUS_IDLE;
+            on_recorder_stop(recorder_file_path);
         }
     }
 }
