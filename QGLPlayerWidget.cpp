@@ -93,13 +93,39 @@ void QGLPlayerWidget::initializeGL()
 void QGLPlayerWidget::resizeGL(int w, int h)
 {
     qDebug() << __FUNCTION__ << "resize->" << w << "x" << h;
-    glViewport(0, 0, w, h);
+
+    float current_aspectRatio = float(w) / float(h);
+    // 计算需要填充黑色背景的区域
+    int x, y, newWidth, newHeight;
+
+    if (current_aspectRatio > aspectRatio) {
+        // 视口宽高比更宽，添加黑边在上下
+        newWidth = h * aspectRatio;
+        newHeight = h;
+        x = (w - newWidth) / 2;
+        y = 0;
+    } else {
+        // 视口宽高比更窄，添加黑边在两侧
+        newWidth = w;
+        newHeight = w / aspectRatio;
+        x = 0;
+        y = (h - newHeight) / 2;
+    }
+    viewport_w = newWidth;
+    viewport_h = newHeight;
+    viewport_x = x;
+    viewport_y = y;
+    glViewport(viewport_x, viewport_y, viewport_w, viewport_h);
+
+
+//    glViewport(0, 0, w, h);
 }
 void QGLPlayerWidget::paintGL()
 {
     qDebug() << __FUNCTION__ << QDateTime::currentDateTime().toMSecsSinceEpoch();
     if(!FFmpegPlayer::frame_consumed.load(std::memory_order_acquire))
     {
+        glViewport(viewport_x, viewport_y, viewport_w, viewport_h);
         glClear(GL_COLOR_BUFFER_BIT);
         glBindTexture(GL_TEXTURE_2D, textureID);
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
@@ -143,7 +169,8 @@ void QGLPlayerWidget::on_new_frame_avaliable()
 }
 void QGLPlayerWidget::on_preview_start(const std::string& media_url, const int width, const int height)
 {
-    qDebug() << __FUNCTION__  << width << height;
+    aspectRatio = (float)width / (float)height;
+    qDebug() << __FUNCTION__  << width << height << aspectRatio;
     QMetaObject::invokeMethod(this, [&](){
         makeCurrent();
         glGenTextures(1, &textureID);
@@ -157,6 +184,7 @@ void QGLPlayerWidget::on_preview_start(const std::string& media_url, const int w
 void QGLPlayerWidget::on_preview_stop(const std::string& media_url)
 {
     qDebug() << __FUNCTION__ ;
+    aspectRatio = 0;
 }
 
 void QGLPlayerWidget::on_new_audio_frame_avaliable(std::shared_ptr<FrameCache> m_frame_cache)
@@ -165,5 +193,4 @@ void QGLPlayerWidget::on_new_audio_frame_avaliable(std::shared_ptr<FrameCache> m
     {
         m_audioPlayer->write(reinterpret_cast<const char*>(m_frame_cache->m_cache->data[0]), m_frame_cache->m_cache->linesize[0]);
     }
-//    qDebug() << __FUNCTION__ << bytes_written << m_frame_cache->m_cache->linesize[0];
 }

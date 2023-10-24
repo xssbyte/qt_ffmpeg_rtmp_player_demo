@@ -15,6 +15,29 @@
   </property>
   <widget class="QWidget" name="centralwidget">
    <layout class="QGridLayout" name="gridLayout">
+    <item row="1" column="0">
+     <widget class="QTabWidget" name="tab_widget">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="currentIndex">
+       <number>1</number>
+      </property>
+      <widget class="QPlayerWidget" name="player_widget">
+       <attribute name="title">
+        <string>player_widget</string>
+       </attribute>
+      </widget>
+      <widget class="QGLPlayerWidget" name="gl_player_widget">
+       <attribute name="title">
+        <string>gl_player_widget</string>
+       </attribute>
+      </widget>
+     </widget>
+    </item>
     <item row="0" column="0">
      <layout class="QHBoxLayout" name="horizontalLayout_3">
       <item>
@@ -64,23 +87,6 @@
        </layout>
       </item>
      </layout>
-    </item>
-    <item row="1" column="0">
-     <widget class="QTabWidget" name="tab_widget">
-      <property name="currentIndex">
-       <number>0</number>
-      </property>
-      <widget class="QPlayerWidget" name="player_widget">
-       <attribute name="title">
-        <string>player_widget</string>
-       </attribute>
-      </widget>
-      <widget class="QGLPlayerWidget" name="gl_player_widget">
-       <attribute name="title">
-        <string>gl_player_widget</string>
-       </attribute>
-      </widget>
-     </widget>
     </item>
    </layout>
   </widget>

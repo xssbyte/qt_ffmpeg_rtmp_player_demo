@@ -3,6 +3,7 @@
 
 #include <functional>
 
+#include <QtWidgets>
 #include <QOpenGLWidget>
 #include <QOpenGLFunctions>
 #include <QOpenGLShaderProgram>
@@ -45,8 +46,8 @@ private:
     GLuint shaderProgram;  // 着色器程序
     GLuint vbo;  // 顶点缓冲对象
     GLuint textureID;
-    int width;
-    int height;
+    int viewport_x = 0, viewport_y = 0, viewport_w = 0, viewport_h = 0;
+    float aspectRatio = 0;
     std::unique_ptr<QAudioPlayer> m_audioPlayer;
 };
 
