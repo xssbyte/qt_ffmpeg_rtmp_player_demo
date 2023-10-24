@@ -43,6 +43,7 @@ protected:
     void on_new_frame_avaliable() override;
     void on_new_audio_frame_avaliable(std::shared_ptr<FrameCache> m_frame_cache) override;
 private:
+    void setup_viewport(int view_w, int view_h);
     GLuint shaderProgram;  // 着色器程序
     GLuint vbo;  // 顶点缓冲对象
     GLuint textureID;

@@ -90,10 +90,8 @@ void QGLPlayerWidget::initializeGL()
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glEnable(GL_TEXTURE_2D);
 }
-void QGLPlayerWidget::resizeGL(int w, int h)
+void QGLPlayerWidget::setup_viewport(int w, int h)
 {
-    qDebug() << __FUNCTION__ << "resize->" << w << "x" << h;
-
     float current_aspectRatio = float(w) / float(h);
     // 计算需要填充黑色背景的区域
     int x, y, newWidth, newHeight;
@@ -115,14 +113,18 @@ void QGLPlayerWidget::resizeGL(int w, int h)
     viewport_h = newHeight;
     viewport_x = x;
     viewport_y = y;
+}
+void QGLPlayerWidget::resizeGL(int w, int h)
+{
+    qDebug() << __FUNCTION__ << "resize->" << w << "x" << h;
+
+    setup_viewport(w, h);
     glViewport(viewport_x, viewport_y, viewport_w, viewport_h);
-
-
 //    glViewport(0, 0, w, h);
 }
 void QGLPlayerWidget::paintGL()
 {
-    qDebug() << __FUNCTION__ << QDateTime::currentDateTime().toMSecsSinceEpoch();
+//    qDebug() << __FUNCTION__ << QDateTime::currentDateTime().toMSecsSinceEpoch();
     if(!FFmpegPlayer::frame_consumed.load(std::memory_order_acquire))
     {
         glViewport(viewport_x, viewport_y, viewport_w, viewport_h);
@@ -170,6 +172,7 @@ void QGLPlayerWidget::on_new_frame_avaliable()
 void QGLPlayerWidget::on_preview_start(const std::string& media_url, const int width, const int height)
 {
     aspectRatio = (float)width / (float)height;
+    setup_viewport(QWidget::width(), QWidget::height());
     qDebug() << __FUNCTION__  << width << height << aspectRatio;
     QMetaObject::invokeMethod(this, [&](){
         makeCurrent();
