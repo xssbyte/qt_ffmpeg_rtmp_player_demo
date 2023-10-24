@@ -25,7 +25,7 @@ class QGLPlayerWidget : public QOpenGLWidget, protected QOpenGLFunctions, protec
 
 public:
     QGLPlayerWidget(QWidget *parent = nullptr);
-    ~QGLPlayerWidget() = default;
+    ~QGLPlayerWidget();
 public slots:
     void start_preview(const std::string &media_url);
     void stop_preview();
@@ -37,15 +37,16 @@ public slots:
     void paintGL() override;
 
 protected:
-    void on_preview_start(const std::string& media_url) override;
+    void on_preview_start(const std::string& media_url, const int width, const int height) override;
     void on_preview_stop(const std::string& media_url) override;
     void on_new_frame_avaliable() override;
     void on_new_audio_frame_avaliable(std::shared_ptr<FrameCache> m_frame_cache) override;
 private:
+    GLuint shaderProgram;  // 着色器程序
+    GLuint vbo;  // 顶点缓冲对象
     GLuint textureID;
     int width;
     int height;
-    std::atomic_bool init_texture_flag = true;
     std::unique_ptr<QAudioPlayer> m_audioPlayer;
 };
 

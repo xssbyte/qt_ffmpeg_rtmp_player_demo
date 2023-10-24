@@ -23,7 +23,7 @@ FFmpegPlayer::FFmpegPlayer()
 
 FFmpegPlayer::~FFmpegPlayer()
 {
-    cleanup();
+    player_status = PLAYER_STATUS_PENDING_STOP;
 }
 int FFmpegPlayer::start_player(const std::string &media_url, int option_ret)
 {
@@ -38,7 +38,6 @@ int FFmpegPlayer::start_preview(const std::string &media_url)
     {
         std::future<int> futureResult = std::async(std::launch::async, [&, media_url](){
             player_status = PLAYER_STATUS_PENDING_START;
-            on_preview_start(media_url);
             if(int ret = process_player_task(media_url) < 0)
             {
                 return ret;
@@ -105,6 +104,10 @@ int FFmpegPlayer::stop_local_record()
         return 0;
     }
     return -1;
+}
+int FFmpegPlayer::resize_view(int width, int height)
+{
+    return 0;
 }
 int FFmpegPlayer::recorder_begin(const std::string& file)
 {
@@ -329,6 +332,7 @@ int FFmpegPlayer::process_player_task(const std::string &media_url)
     }
     //initialization finish
     on_stream_avaliable();
+    on_preview_start(media_url, width, height);
 
     while (av_read_frame(m_formatCtx, m_packet) >= 0)
     {
@@ -434,7 +438,7 @@ int FFmpegPlayer::process_player_task(const std::string &media_url)
 
 void FFmpegPlayer::on_new_frame_avaliable(){};
 void FFmpegPlayer::on_new_audio_frame_avaliable(std::shared_ptr<FrameCache> m_frame_cache){};
-void FFmpegPlayer::on_preview_start(const std::string &media_url){
+void FFmpegPlayer::on_preview_start(const std::string& media_url, const int width, const int height){
     av_log(NULL, AV_LOG_DEBUG, "[%s] %s\n", __FUNCTION__, media_url.c_str());
 };
 void FFmpegPlayer::on_preview_stop(const std::string &media_url){
@@ -457,6 +461,8 @@ void FFmpegPlayer::on_stream_avaliable()
     if(player_status == PLAYER_STATUS_PENDING_START)
     {
         player_status = PLAYER_STATUS_PLAYING;
+        width = m_codecCtx->width;
+        height = m_codecCtx->height;
     }
     if(recorder_status == RECORDER_STATUS_PENDING_START)
     {
@@ -570,6 +576,8 @@ void FFmpegPlayer::cleanup()
     }
     m_videoStream = -1;
     m_audioStream = -1;
+    width = 0;
+    height = 0;
 }
 void FFmpegPlayer::cleanup_recorder()
 {

@@ -46,6 +46,7 @@ public:
      * @return 0成功
      */
     int start_preview(const std::string &media_url);
+    int resize_view(int width, int height);
     /**
      * @brief stop_preview 异步的停止预览，清理ffmpeg资源，异步停止播放线程，成功停止会回调on_stop_preview.也会停止其他功能
      * @return 0成功
@@ -86,7 +87,7 @@ protected:
     virtual void on_player_error(int errnum);
 
     //播放线程启动成功回调
-    virtual void on_preview_start(const std::string& media_url);
+    virtual void on_preview_start(const std::string& media_url, const int width, const int height);
     //播放线程关闭回调，不管是否报错，播放线程结束就回调,可以在里面重启播放器
     virtual void on_preview_stop(const std::string& media_url);
 
@@ -154,6 +155,8 @@ private:
     PlayerStatus player_status = PLAYER_STATUS_IDLE;
     RecorderStatus recorder_status = RECORDER_STATUS_IDLE;
 
+    int width = 0;
+    int height = 0;
     int m_videoStream = -1;
     int m_audioStream = -1;
 };

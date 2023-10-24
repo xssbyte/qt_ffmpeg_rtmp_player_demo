@@ -14,87 +14,75 @@
    <string>MainWindow</string>
   </property>
   <widget class="QWidget" name="centralwidget">
-   <widget class="QTabWidget" name="tab_widget">
-    <property name="geometry">
-     <rect>
-      <x>20</x>
-      <y>40</y>
-      <width>1604</width>
-      <height>926</height>
-     </rect>
-    </property>
-    <property name="currentIndex">
-     <number>1</number>
-    </property>
-    <widget class="QPlayerWidget" name="player_widget">
-     <attribute name="title">
-      <string>player_widget</string>
-     </attribute>
-    </widget>
-    <widget class="QGLPlayerWidget" name="gl_player_widget">
-     <attribute name="title">
-      <string>gl_player_widget</string>
-     </attribute>
-    </widget>
-   </widget>
-   <widget class="QWidget" name="layoutWidget">
-    <property name="geometry">
-     <rect>
-      <x>20</x>
-      <y>10</y>
-      <width>931</width>
-      <height>26</height>
-     </rect>
-    </property>
-    <layout class="QHBoxLayout" name="horizontalLayout_3">
-     <item>
-      <layout class="QHBoxLayout" name="horizontalLayout_2">
-       <item>
-        <widget class="QLabel" name="url_label">
-         <property name="text">
-          <string>url:</string>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QLineEdit" name="url_line_edit"/>
-       </item>
-      </layout>
-     </item>
-     <item>
-      <layout class="QHBoxLayout" name="horizontalLayout">
-       <item>
-        <widget class="QPushButton" name="button_start_preview">
-         <property name="text">
-          <string>start_preview</string>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QPushButton" name="button_stop_preview">
-         <property name="text">
-          <string>stop_preview</string>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QPushButton" name="button_start_record">
-         <property name="text">
-          <string>start_record</string>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QPushButton" name="button_stop_record">
-         <property name="text">
-          <string>stop_record</string>
-         </property>
-        </widget>
-       </item>
-      </layout>
-     </item>
-    </layout>
-   </widget>
+   <layout class="QGridLayout" name="gridLayout">
+    <item row="0" column="0">
+     <layout class="QHBoxLayout" name="horizontalLayout_3">
+      <item>
+       <layout class="QHBoxLayout" name="horizontalLayout_2">
+        <item>
+         <widget class="QLabel" name="url_label">
+          <property name="text">
+           <string>url:</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLineEdit" name="url_line_edit"/>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" name="horizontalLayout">
+        <item>
+         <widget class="QPushButton" name="button_start_preview">
+          <property name="text">
+           <string>start_preview</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="button_stop_preview">
+          <property name="text">
+           <string>stop_preview</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="button_start_record">
+          <property name="text">
+           <string>start_record</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="button_stop_record">
+          <property name="text">
+           <string>stop_record</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+     </layout>
+    </item>
+    <item row="1" column="0">
+     <widget class="QTabWidget" name="tab_widget">
+      <property name="currentIndex">
+       <number>0</number>
+      </property>
+      <widget class="QPlayerWidget" name="player_widget">
+       <attribute name="title">
+        <string>player_widget</string>
+       </attribute>
+      </widget>
+      <widget class="QGLPlayerWidget" name="gl_player_widget">
+       <attribute name="title">
+        <string>gl_player_widget</string>
+       </attribute>
+      </widget>
+     </widget>
+    </item>
+   </layout>
   </widget>
   <widget class="QMenuBar" name="menubar">
    <property name="geometry">
@@ -110,15 +98,15 @@
  </widget>
  <customwidgets>
   <customwidget>
-   <class>QPlayerWidget</class>
-   <extends>QWidget</extends>
-   <header location="global">QPlayerWidget.h</header>
-   <container>1</container>
-  </customwidget>
-  <customwidget>
    <class>QGLPlayerWidget</class>
    <extends>QWidget</extends>
    <header location="global">QGLPlayerWidget.h</header>
+   <container>1</container>
+  </customwidget>
+  <customwidget>
+   <class>QPlayerWidget</class>
+   <extends>QWidget</extends>
+   <header location="global">QPlayerWidget.h</header>
    <container>1</container>
   </customwidget>
  </customwidgets>
