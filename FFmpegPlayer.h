@@ -26,10 +26,8 @@ extern "C" {
 class FFmpegPlayer
 {
 public:
-    explicit FFmpegPlayer();
+    FFmpegPlayer();
     ~FFmpegPlayer();
-public:
-
 public:
 
     /**
@@ -46,7 +44,6 @@ public:
      * @return 0成功
      */
     int start_preview(const std::string &media_url);
-    int resize_view(int width, int height);
     /**
      * @brief stop_preview 异步的停止预览，清理ffmpeg资源，异步停止播放线程，成功停止会回调on_stop_preview.也会停止其他功能
      * @return 0成功
@@ -159,6 +156,7 @@ private:
     int height = 0;
     int m_videoStream = -1;
     int m_audioStream = -1;
+    std::unique_ptr<std::future<void>> m_playerFutureObserver = nullptr;
 };
 
 #endif // FFMPEGPLAYER_H

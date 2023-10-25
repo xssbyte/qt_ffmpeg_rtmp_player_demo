@@ -88,10 +88,12 @@ void QGLPlayerWidget::initializeGL()
 
     // 设置OpenGL状态，例如清除颜色和启用纹理2D
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-    glEnable(GL_TEXTURE_2D);
+//    glEnable(GL_TEXTURE_2D);
 }
 void QGLPlayerWidget::setup_viewport(int w, int h)
 {
+    if(!w||!h)
+        return;
     float current_aspectRatio = float(w) / float(h);
     // 计算需要填充黑色背景的区域
     int x, y, newWidth, newHeight;
@@ -117,7 +119,6 @@ void QGLPlayerWidget::setup_viewport(int w, int h)
 void QGLPlayerWidget::resizeGL(int w, int h)
 {
     qDebug() << __FUNCTION__ << "resize->" << w << "x" << h;
-
     setup_viewport(w, h);
     glViewport(viewport_x, viewport_y, viewport_w, viewport_h);
 //    glViewport(0, 0, w, h);
@@ -171,9 +172,9 @@ void QGLPlayerWidget::on_new_frame_avaliable()
 }
 void QGLPlayerWidget::on_preview_start(const std::string& media_url, const int width, const int height)
 {
+    qDebug() << __FUNCTION__  << width << height;
     aspectRatio = (float)width / (float)height;
     setup_viewport(QWidget::width(), QWidget::height());
-    qDebug() << __FUNCTION__  << width << height << aspectRatio;
     QMetaObject::invokeMethod(this, [&](){
         makeCurrent();
         glGenTextures(1, &textureID);
@@ -182,12 +183,14 @@ void QGLPlayerWidget::on_preview_start(const std::string& media_url, const int w
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     }, Qt::QueuedConnection);
+    emit sig_on_preview_start(QString(media_url.c_str()), width, height);
 }
 
 void QGLPlayerWidget::on_preview_stop(const std::string& media_url)
 {
     qDebug() << __FUNCTION__ ;
     aspectRatio = 0;
+    emit sig_on_preview_stop(QString(media_url.c_str()));
 }
 
 void QGLPlayerWidget::on_new_audio_frame_avaliable(std::shared_ptr<FrameCache> m_frame_cache)

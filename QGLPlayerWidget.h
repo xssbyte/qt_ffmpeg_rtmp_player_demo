@@ -27,6 +27,12 @@ class QGLPlayerWidget : public QOpenGLWidget, protected QOpenGLFunctions, protec
 public:
     QGLPlayerWidget(QWidget *parent = nullptr);
     ~QGLPlayerWidget();
+signals:
+    void sig_on_preview_start(const QString &media_url, const int width, const int heigh);
+    void sig_on_preview_stop(const QString &media_url);
+    void sig_on_record_start();
+    void sig_on_record_stop();
+
 public slots:
     void start_preview(const std::string &media_url);
     void stop_preview();
