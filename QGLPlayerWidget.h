@@ -3,6 +3,7 @@
 
 #include <functional>
 
+#include <QtWidgets>
 #include <QOpenGLWidget>
 #include <QOpenGLFunctions>
 #include <QOpenGLShaderProgram>
@@ -25,7 +26,13 @@ class QGLPlayerWidget : public QOpenGLWidget, protected QOpenGLFunctions, protec
 
 public:
     QGLPlayerWidget(QWidget *parent = nullptr);
-    ~QGLPlayerWidget() = default;
+    ~QGLPlayerWidget();
+signals:
+    void sig_on_preview_start(const QString &media_url, const int width, const int heigh);
+    void sig_on_preview_stop(const QString &media_url);
+    void sig_on_record_start();
+    void sig_on_record_stop();
+
 public slots:
     void start_preview(const std::string &media_url);
     void stop_preview();
@@ -37,15 +44,17 @@ public slots:
     void paintGL() override;
 
 protected:
-    void on_preview_start(const std::string& media_url) override;
+    void on_preview_start(const std::string& media_url, const int width, const int height) override;
     void on_preview_stop(const std::string& media_url) override;
     void on_new_frame_avaliable() override;
     void on_new_audio_frame_avaliable(std::shared_ptr<FrameCache> m_frame_cache) override;
 private:
+    void setup_viewport(int view_w, int view_h);
+    GLuint shaderProgram;  // 着色器程序
+    GLuint vbo;  // 顶点缓冲对象
     GLuint textureID;
-    int width;
-    int height;
-    std::atomic_bool init_texture_flag = true;
+    int viewport_x = 0, viewport_y = 0, viewport_w = 0, viewport_h = 0;
+    float aspectRatio = 0;
     std::unique_ptr<QAudioPlayer> m_audioPlayer;
 };
 

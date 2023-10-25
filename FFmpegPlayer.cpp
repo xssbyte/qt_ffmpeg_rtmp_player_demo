@@ -23,7 +23,7 @@ FFmpegPlayer::FFmpegPlayer()
 
 FFmpegPlayer::~FFmpegPlayer()
 {
-    cleanup();
+    player_status = PLAYER_STATUS_PENDING_STOP;
 }
 int FFmpegPlayer::start_player(const std::string &media_url, int option_ret)
 {
@@ -36,17 +36,22 @@ int FFmpegPlayer::start_preview(const std::string &media_url)
     std::lock_guard<std::mutex> pl(player_mutex);
     if(player_status == PLAYER_STATUS_IDLE)
     {
-        std::future<int> futureResult = std::async(std::launch::async, [&, media_url](){
-            player_status = PLAYER_STATUS_PENDING_START;
-            on_preview_start(media_url);
-            if(int ret = process_player_task(media_url) < 0)
-            {
-                return ret;
-            }
-            return 0;
-        });
+        //wait until last on_preview_stop finish
+        if(m_playerFutureObserver != nullptr)
+        {
+            m_playerFutureObserver.get();
+        }
         //future observer
-        std::thread([&, media_url, futureResult = std::move(futureResult)]() mutable {
+        m_playerFutureObserver = std::make_unique<std::future<void>>(std::async(std::launch::async, [&, media_url]() mutable {
+            //future processor
+            std::future<int> futureResult = std::async(std::launch::async, [&, media_url](){
+                player_status = PLAYER_STATUS_PENDING_START;
+                if(int ret = process_player_task(media_url) < 0)
+                {
+                    return ret;
+                }
+                return 0;
+            });
             int ret = futureResult.get();
             if(ret < 0)
             {
@@ -56,7 +61,7 @@ int FFmpegPlayer::start_preview(const std::string &media_url)
             player_status = PLAYER_STATUS_IDLE;
             //You can block on_stop_preview && You can restart preview in on_stop_preview
             on_preview_stop(media_url);
-        }).detach();
+        }));
         return 0;
     }
     else
@@ -329,6 +334,7 @@ int FFmpegPlayer::process_player_task(const std::string &media_url)
     }
     //initialization finish
     on_stream_avaliable();
+    on_preview_start(media_url, width, height);
 
     while (av_read_frame(m_formatCtx, m_packet) >= 0)
     {
@@ -434,7 +440,7 @@ int FFmpegPlayer::process_player_task(const std::string &media_url)
 
 void FFmpegPlayer::on_new_frame_avaliable(){};
 void FFmpegPlayer::on_new_audio_frame_avaliable(std::shared_ptr<FrameCache> m_frame_cache){};
-void FFmpegPlayer::on_preview_start(const std::string &media_url){
+void FFmpegPlayer::on_preview_start(const std::string& media_url, const int width, const int height){
     av_log(NULL, AV_LOG_DEBUG, "[%s] %s\n", __FUNCTION__, media_url.c_str());
 };
 void FFmpegPlayer::on_preview_stop(const std::string &media_url){
@@ -457,6 +463,19 @@ void FFmpegPlayer::on_stream_avaliable()
     if(player_status == PLAYER_STATUS_PENDING_START)
     {
         player_status = PLAYER_STATUS_PLAYING;
+        width = m_codecCtx->width;
+        height = m_codecCtx->height;
+    }
+}
+void FFmpegPlayer::on_packet_received()
+{
+    std::lock_guard<std::mutex> rl(recorder_mutex);
+    if(recorder_status == RECORDER_STATUS_RECORDING)
+    {
+        if(int ret = av_interleaved_write_frame(m_outStreamContext, m_packet) < 0)
+        {
+            on_player_error(ret);
+        }
     }
     if(recorder_status == RECORDER_STATUS_PENDING_START)
     {
@@ -469,17 +488,11 @@ void FFmpegPlayer::on_stream_avaliable()
         {
             recorder_status = RECORDER_STATUS_RECORDING;
             on_recorder_start(recorder_file_path);
-        }
-    }
-}
-void FFmpegPlayer::on_packet_received()
-{
-    std::lock_guard<std::mutex> rl(recorder_mutex);
-    if(recorder_status == RECORDER_STATUS_RECORDING)
-    {
-        if(int ret = av_interleaved_write_frame(m_outStreamContext, m_packet) < 0)
-        {
-            on_player_error(ret);
+            //init sync
+            if(int ret = av_interleaved_write_frame(m_outStreamContext, m_packet) < 0)
+            {
+                on_player_error(ret);
+            }
         }
     }
     else if(recorder_status == RECORDER_STATUS_PENDING_STOP)
@@ -497,6 +510,7 @@ void FFmpegPlayer::on_packet_received()
 }
 void FFmpegPlayer::on_stream_unavaliable()
 {
+    std::lock_guard<std::mutex> pl(player_mutex);
     std::lock_guard<std::mutex> rl(recorder_mutex);
     player_status = PLAYER_STATUS_PENDING_STOP;
     if(recorder_status == RECORDER_STATUS_RECORDING)
@@ -570,6 +584,8 @@ void FFmpegPlayer::cleanup()
     }
     m_videoStream = -1;
     m_audioStream = -1;
+    width = 0;
+    height = 0;
 }
 void FFmpegPlayer::cleanup_recorder()
 {
