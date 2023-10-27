@@ -30,14 +30,14 @@ public:
 signals:
     void sig_on_preview_start(const QString &media_url, const int width, const int heigh);
     void sig_on_preview_stop(const QString &media_url);
-    void sig_on_record_start();
-    void sig_on_record_stop();
+    void sig_on_record_start(const QString& file);
+    void sig_on_record_stop(const QString& file);
 
 public slots:
-    void start_preview(const std::string &media_url);
-    void stop_preview();
-    void start_local_record(const std::string &output_file);
-    void stop_local_record();
+    int start_preview(const std::string &media_url);
+    int stop_preview();
+    int start_local_record(const std::string &output_file);
+    int stop_local_record();
 
     void initializeGL() override;
     void resizeGL(int w, int h) override;
@@ -46,6 +46,9 @@ public slots:
 protected:
     void on_preview_start(const std::string& media_url, const int width, const int height) override;
     void on_preview_stop(const std::string& media_url) override;
+    void on_recorder_start(const std::string& file) override;
+    void on_recorder_stop(const std::string& file) override;
+
     void on_new_frame_avaliable() override;
     void on_new_audio_frame_avaliable(std::shared_ptr<FrameCache> m_frame_cache) override;
 private:

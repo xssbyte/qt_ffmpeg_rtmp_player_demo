@@ -10,23 +10,24 @@ QGLPlayerWidget::QGLPlayerWidget(QWidget *parent)
 QGLPlayerWidget::~QGLPlayerWidget()
 {
 }
-void QGLPlayerWidget::start_preview(const std::string &media_url)
+int QGLPlayerWidget::start_preview(const std::string &media_url)
 {
-    FFmpegPlayer::start_preview(media_url);
+
     m_audioPlayer->start_consume_audio();
+    return FFmpegPlayer::start_preview(media_url);
 }
-void QGLPlayerWidget::stop_preview()
+int QGLPlayerWidget::stop_preview()
 {
-    FFmpegPlayer::stop_preview();
     m_audioPlayer->stop_consume_audio();
+    return FFmpegPlayer::stop_preview();
 }
-void QGLPlayerWidget::start_local_record(const std::string &output_file)
+int QGLPlayerWidget::start_local_record(const std::string &output_file)
 {
-    FFmpegPlayer::start_local_record(output_file);
+    return FFmpegPlayer::start_local_record(output_file);
 }
-void QGLPlayerWidget::stop_local_record()
+int QGLPlayerWidget::stop_local_record()
 {
-    FFmpegPlayer::stop_local_record();
+    return FFmpegPlayer::stop_local_record();
 }
 void QGLPlayerWidget::initializeGL()
 {
@@ -192,7 +193,16 @@ void QGLPlayerWidget::on_preview_stop(const std::string& media_url)
     aspectRatio = 0;
     emit sig_on_preview_stop(QString(media_url.c_str()));
 }
-
+void QGLPlayerWidget::on_recorder_start(const std::string& file)
+{
+    qDebug() << __FUNCTION__ ;
+    emit sig_on_record_start(QString(file.c_str()));
+}
+void QGLPlayerWidget::on_recorder_stop(const std::string& file)
+{
+    qDebug() << __FUNCTION__ ;
+    emit sig_on_record_stop(QString(file.c_str()));
+}
 void QGLPlayerWidget::on_new_audio_frame_avaliable(std::shared_ptr<FrameCache> m_frame_cache)
 {
     if(m_audioPlayer)
