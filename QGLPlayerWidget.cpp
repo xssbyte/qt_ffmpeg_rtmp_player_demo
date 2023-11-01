@@ -89,7 +89,7 @@ void QGLPlayerWidget::initializeGL()
 
     // 设置OpenGL状态，例如清除颜色和启用纹理2D
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-//    glEnable(GL_TEXTURE_2D);
+    glEnable(GL_TEXTURE_2D);
 }
 void QGLPlayerWidget::setup_viewport(int w, int h)
 {
@@ -167,9 +167,10 @@ void QGLPlayerWidget::paintGL()
 
 void QGLPlayerWidget::on_new_frame_avaliable()
 {
-    QMetaObject::invokeMethod(this, [&](){
-        this->update();
-    }, Qt::QueuedConnection);
+    this->update();
+//    QMetaObject::invokeMethod(this, [&](){
+
+//    }, Qt::QueuedConnection);
 }
 void QGLPlayerWidget::on_preview_start(const std::string& media_url, const int width, const int height)
 {
