@@ -15,10 +15,11 @@ FFmpegPlayer::FFmpegPlayer()
     av_log_set_callback(console_log_callback);
     av_log(NULL, AV_LOG_ERROR, "[FFMPEG_VERION_INFO]%s\n", av_version_info());
 
-    av_dict_set(&m_options, "reconnect", "1", 0);
+    av_dict_set(&m_options, "tune", "zerolatency", 0);
     av_dict_set(&m_options, "fflags", "nobuffer", 0);
-    av_dict_set(&m_options, "reconnect_streamed", "1", 0);
-    av_dict_set(&m_options, "reconnect_delay_max", "100", 0);
+    av_dict_set(&m_options, "reconnect", "0", 0);
+    av_dict_set(&m_options, "reconnect_streamed", "0", 0);
+    av_dict_set(&m_options, "reconnect_delay_max", "5", 0);
 }
 
 FFmpegPlayer::~FFmpegPlayer()
@@ -39,7 +40,7 @@ int FFmpegPlayer::start_preview(const std::string &media_url)
         //wait until last on_preview_stop finish
         if(m_playerFutureObserver != nullptr)
         {
-            m_playerFutureObserver.get();
+            m_playerFutureObserver->get();
         }
         //future observer
         m_playerFutureObserver = std::make_unique<std::future<void>>(std::async(std::launch::async, [&, media_url]() mutable {
@@ -96,6 +97,10 @@ int FFmpegPlayer::start_local_record(const std::string &output_file)
             return ret;
         }
         recorder_status = RECORDER_STATUS_RECORDING;
+        std::future<void> futureResult = std::async(std::launch::async, [&, output_file](){
+            on_recorder_start(output_file);
+            return;
+        });
         return 0;
     }
     return -1;
@@ -104,9 +109,15 @@ int FFmpegPlayer::stop_local_record()
 {
     std::lock_guard<std::mutex> pl(player_mutex);
     std::lock_guard<std::mutex> r1(recorder_mutex);
-    if(recorder_status == RECORDER_STATUS_RECORDING)
+    if((player_status == PLAYER_STATUS_PLAYING) && (recorder_status == RECORDER_STATUS_RECORDING))
     {
         recorder_status = RECORDER_STATUS_PENDING_STOP;
+        return 0;
+    }
+    if((player_status == PLAYER_STATUS_IDLE) && (recorder_status == RECORDER_STATUS_PENDING_START))
+    {
+        recorder_status = RECORDER_STATUS_IDLE;
+        recorder_file_path.clear();
         return 0;
     }
     return -1;
@@ -171,6 +182,10 @@ int FFmpegPlayer::process_player_task(const std::string &media_url)
         cleanup();
         return -1;
     }
+    std::chrono::time_point<std::chrono::high_resolution_clock> last_time = std::chrono::high_resolution_clock::now();
+    m_formatCtx->interrupt_callback.opaque = &last_time;
+    m_formatCtx->interrupt_callback.callback = this->stream_interrupt_callback;
+    //would block
     if (int ret = avformat_open_input(&m_formatCtx, local_media_url.data(), nullptr, &m_options) < 0)
     {
         av_log(NULL, AV_LOG_ERROR, "Failed to open input stream: %s\n", local_media_url.data());
@@ -336,6 +351,7 @@ int FFmpegPlayer::process_player_task(const std::string &media_url)
     on_stream_avaliable();
     on_preview_start(media_url, width, height);
 
+    last_time = std::chrono::high_resolution_clock::now();
     while (av_read_frame(m_formatCtx, m_packet) >= 0)
     {
         if(player_status == PLAYER_STATUS_PLAYING)
@@ -355,9 +371,9 @@ int FFmpegPlayer::process_player_task(const std::string &media_url)
                             if (!m_frame_cache->m_cache)
                             {
                                 av_log(NULL, AV_LOG_ERROR, "Failed to allocate AVFrame");
-                                on_stream_unavaliable();
                                 av_packet_unref(m_packet);
                                 cleanup();
+                                on_stream_unavaliable();
                                 return -1;
                             }
                             m_frame_cache->m_cache->width = m_codecCtx->width;
@@ -366,9 +382,9 @@ int FFmpegPlayer::process_player_task(const std::string &media_url)
                             if (av_frame_get_buffer(m_frame_cache->m_cache, 0) < 0)
                             {
                                 av_log(NULL, AV_LOG_ERROR, "Failed to allocate RGB buffer");
-                                on_stream_unavaliable();
                                 av_packet_unref(m_packet);
                                 cleanup();
+                                on_stream_unavaliable();
                                 return -1;
                             }
                             sws_scale(m_swsCtx, m_frame->data, m_frame->linesize, 0, m_codecCtx->height,
@@ -400,9 +416,9 @@ int FFmpegPlayer::process_player_task(const std::string &media_url)
                         if (av_frame_get_buffer(m_audio_frame_cache->m_cache, 0) < 0)
                         {
                             av_log(NULL, AV_LOG_ERROR, "Failed to allocate audio buffer");
-                            on_stream_unavaliable();
                             av_packet_unref(m_packet);
                             cleanup();
+                            on_stream_unavaliable();
                             return -1;
                         }
                         swr_convert(m_swrCtx, m_audio_frame_cache->m_cache->data, m_audio_frame_cache->m_cache->nb_samples,
@@ -415,27 +431,37 @@ int FFmpegPlayer::process_player_task(const std::string &media_url)
         }
         else if(player_status == PLAYER_STATUS_PENDING_STOP)
         {
-            on_stream_unavaliable();
             av_packet_unref(m_packet);
             cleanup();
+            on_stream_unavaliable();
             return 0;
         }
         else
         {
             av_log(NULL, AV_LOG_ERROR, "Unexpected Status! %d", player_status);
-            on_stream_unavaliable();
             av_packet_unref(m_packet);
             cleanup();
+            on_stream_unavaliable();
             return -1;
         }
+        last_time = std::chrono::high_resolution_clock::now();
     }
     //EOF or error
-    on_stream_unavaliable();
+    av_log(NULL, AV_LOG_INFO, "EOF\n");
     av_packet_unref(m_packet);
     cleanup();
+    on_stream_unavaliable();
     return 0;
 }
-
+int FFmpegPlayer::stream_interrupt_callback(void* opaque)
+{
+    auto current_time = std::chrono::high_resolution_clock::now();
+    auto elapsed_time = std::chrono::duration_cast<std::chrono::milliseconds>(current_time - *(std::chrono::time_point<std::chrono::high_resolution_clock>*)opaque);
+    if (elapsed_time.count() > 5000) {
+        return 1;
+    }
+    return 0;
+}
 
 
 void FFmpegPlayer::on_new_frame_avaliable(){};
@@ -505,6 +531,7 @@ void FFmpegPlayer::on_packet_received()
         else
         {
             recorder_status = RECORDER_STATUS_IDLE;
+            on_recorder_stop(recorder_file_path);
         }
     }
 }

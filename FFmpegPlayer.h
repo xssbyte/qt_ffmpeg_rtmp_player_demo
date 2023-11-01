@@ -142,6 +142,8 @@ private:
     SwsContext *m_swsCtx = nullptr;
     SwrContext *m_swrCtx = nullptr;
     AVCodecParameters *m_videoCodecParam = nullptr;
+    //timestamp_old
+    static int stream_interrupt_callback(void* ptr);
 
     //recorder
     AVFormatContext *m_outStreamContext = nullptr;
