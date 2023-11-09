@@ -1,4 +1,4 @@
-#include "mainwindow.h"
+﻿#include "mainwindow.h"
 #include "ui_mainwindow.h"
 
 #include <QDateTime>
@@ -28,13 +28,21 @@ MainWindow::MainWindow(QWidget *parent)
         if(ui->tab_widget->currentIndex() == ui->tab_widget->indexOf(ui->player_widget))
             ui->player_widget->start_local_record(fileName.toStdString());
         else if(ui->tab_widget->currentIndex() == ui->tab_widget->indexOf(ui->gl_player_widget))
-            ui->gl_player_widget->start_local_record(fileName.toStdString());
+            ui->gl_player_widget->start_record(fileName.toStdString());
     });
     QObject::connect(ui->button_stop_record, &QAbstractButton::pressed, [&](){
         if(ui->tab_widget->currentIndex() == ui->tab_widget->indexOf(ui->player_widget))
             ui->player_widget->stop_local_record();
         else if(ui->tab_widget->currentIndex() == ui->tab_widget->indexOf(ui->gl_player_widget))
-            ui->gl_player_widget->stop_local_record();
+            ui->gl_player_widget->stop_record();
+    });
+    QObject::connect(ui->button_capture_frame, &QAbstractButton::pressed, [&](){
+        QDateTime currentDateTime = QDateTime::currentDateTime();
+        QString fileName = currentDateTime.toString("yyyy-MM-dd_hhmmss") + "_" + QString::number(QDateTime::currentMSecsSinceEpoch()) + ".jpg";
+        if(ui->tab_widget->currentIndex() == ui->tab_widget->indexOf(ui->player_widget))
+            ui->player_widget->capture_frame(fileName.toStdString());
+        else if(ui->tab_widget->currentIndex() == ui->tab_widget->indexOf(ui->gl_player_widget))
+            ui->gl_player_widget->capture_frame(fileName.toStdString());
     });
     QObject::connect(ui->tab_widget, &QTabWidget::currentChanged, [&](int index){
         if((index == ui->tab_widget->indexOf(ui->player_widget))
@@ -48,6 +56,7 @@ MainWindow::MainWindow(QWidget *parent)
             assert(0);
         }
     });
+
     ui->url_line_edit->setPlaceholderText("rtsp://192.168.1.160:8554/0");
     ui->tab_widget->setCurrentWidget(ui->player_widget);
 }

@@ -1,4 +1,4 @@
-#ifndef QGLPLAYERWIDGET_H
+﻿#ifndef QGLPLAYERWIDGET_H
 #define QGLPLAYERWIDGET_H
 
 #include <functional>
@@ -15,12 +15,12 @@
 #include <QAudioPlayer.h>
 /**
 * @brief         QGLPlayerWidget class
-* 继承了QOpenGLWidget，同步绘制到opengl缓冲区，没有额外的memcpy
+* 继承了QOpenGLWidget，同步绘制到opengl缓冲区，没有memcpy
 * @author        Samuel<13321133339@163.com>
 * @date          2023/09/23
 */
 
-class QGLPlayerWidget : public QOpenGLWidget, protected QOpenGLFunctions, protected FFmpegPlayer
+class QGLPlayerWidget : public QOpenGLWidget, protected QOpenGLFunctions, public FFmpegPlayer
 {
     Q_OBJECT
 
@@ -36,8 +36,6 @@ signals:
 public slots:
     int start_preview(const std::string &media_url);
     int stop_preview();
-    int start_local_record(const std::string &output_file);
-    int stop_local_record();
 
     void initializeGL() override;
     void resizeGL(int w, int h) override;
@@ -49,15 +47,15 @@ protected:
     void on_recorder_start(const std::string& file) override;
     void on_recorder_stop(const std::string& file) override;
 
-    void on_new_frame_avaliable() override;
+    void on_new_frame_avaliable(std::shared_ptr<FrameCache> m_frame_cache) override;
     void on_new_audio_frame_avaliable(std::shared_ptr<FrameCache> m_frame_cache) override;
 private:
+
     void setup_viewport(int view_w, int view_h);
-    GLuint shaderProgram;  // 着色器程序
-    GLuint vbo;  // 顶点缓冲对象
     GLuint textureID;
     int viewport_x = 0, viewport_y = 0, viewport_w = 0, viewport_h = 0;
     float aspectRatio = 0;
+    std::mutex render_mutex;
     std::unique_ptr<QAudioPlayer> m_audioPlayer;
 };
 

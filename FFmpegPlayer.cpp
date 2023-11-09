@@ -1,4 +1,4 @@
-#include <FFmpegPlayer.h>
+﻿#include <FFmpegPlayer.h>
 
 void console_log_callback(void *avcl, int level, const char *fmt, va_list vl)
 {
@@ -8,12 +8,12 @@ void console_log_callback(void *avcl, int level, const char *fmt, va_list vl)
     fflush(stderr);
 }
 
-FFmpegPlayer::FFmpegPlayer()
+FFmpegPlayer::FFmpegPlayer() : frame_consumed(true)
 {
     avformat_network_init();
     av_log_set_level(AV_LOG_INFO);
     av_log_set_callback(console_log_callback);
-    av_log(NULL, AV_LOG_ERROR, "[FFMPEG_VERION_INFO]%s\n", av_version_info());
+    av_log(NULL, AV_LOG_ERROR, "[FFMPEG_VERION]%s\n", av_version_info());
 
     av_dict_set(&m_options, "tune", "zerolatency", 0);
     av_dict_set(&m_options, "fflags", "nobuffer", 0);
@@ -47,7 +47,7 @@ int FFmpegPlayer::start_preview(const std::string &media_url)
             //future processor
             std::future<int> futureResult = std::async(std::launch::async, [&, media_url](){
                 player_status = PLAYER_STATUS_PENDING_START;
-                if(int ret = process_player_task(media_url) < 0)
+                if(int ret = player_process(media_url) < 0)
                 {
                     return ret;
                 }
@@ -80,7 +80,7 @@ int FFmpegPlayer::stop_preview()
     }
     return -1;
 }
-int FFmpegPlayer::start_local_record(const std::string &output_file)
+int FFmpegPlayer::start_record(const std::string &output_file)
 {
     std::lock_guard<std::mutex> pl(player_mutex);
     std::lock_guard<std::mutex> rl(recorder_mutex);
@@ -105,7 +105,7 @@ int FFmpegPlayer::start_local_record(const std::string &output_file)
     }
     return -1;
 }
-int FFmpegPlayer::stop_local_record()
+int FFmpegPlayer::stop_record()
 {
     std::lock_guard<std::mutex> pl(player_mutex);
     std::lock_guard<std::mutex> r1(recorder_mutex);
@@ -121,6 +121,16 @@ int FFmpegPlayer::stop_local_record()
         return 0;
     }
     return -1;
+}
+int FFmpegPlayer::capture_frame(const std::string &output_file)
+{
+    if(player_status != PLAYER_STATUS_PLAYING)
+        return -1;
+    if(capture_frame_status != CAPTURE_FRAME_OFF)
+        return -1;
+    capture_frame_file_path = output_file;
+    capture_frame_status = CAPTURE_FRAME_ON;
+    return 0;
 }
 int FFmpegPlayer::recorder_begin(const std::string& file)
 {
@@ -171,8 +181,73 @@ int FFmpegPlayer::recorder_end()
     cleanup_recorder();
     return 0;
 }
-
-int FFmpegPlayer::process_player_task(const std::string &media_url)
+int FFmpegPlayer::save_frame_as_jpeg(AVFrame* frame, const std::string& file)
+{
+    const AVCodec *frame_codec = avcodec_find_encoder(AV_CODEC_ID_MJPEG);
+    if (!frame_codec)
+    {
+        av_log(NULL, AV_LOG_ERROR, "Failed to find mjpeg decoder");
+        return -1;
+    }
+    AVCodecContext* frame_codec_ctx = avcodec_alloc_context3(frame_codec);
+    if(!frame_codec_ctx)
+    {
+        av_log(NULL, AV_LOG_ERROR, "Failed to alloc ");
+        return -1;
+    }
+    frame_codec_ctx->bit_rate = m_codecCtx->bit_rate;
+    frame_codec_ctx->width = m_codecCtx->width;
+    frame_codec_ctx->height = m_codecCtx->height;
+    frame_codec_ctx->time_base.num = 1;
+    frame_codec_ctx->time_base.den = 1;
+    frame_codec_ctx->gop_size = m_codecCtx->gop_size;
+    frame_codec_ctx->max_b_frames = m_codecCtx->max_b_frames;
+    frame_codec_ctx->thread_count = m_codecCtx->thread_count;
+    frame_codec_ctx->pix_fmt = m_codecCtx->pix_fmt;
+    if (int ret = avcodec_open2(frame_codec_ctx, frame_codec, nullptr) < 0)
+    {
+        av_log(NULL, AV_LOG_ERROR, "Failed to open avcodec");
+        avcodec_close(frame_codec_ctx);
+        avcodec_free_context(&frame_codec_ctx);
+        return -1;
+    }
+    if(int ret = avcodec_send_frame(frame_codec_ctx, frame) < 0)
+    {
+        av_log(NULL, AV_LOG_ERROR, "Failed to send frame");
+        avcodec_close(frame_codec_ctx);
+        avcodec_free_context(&frame_codec_ctx);
+        return -1;
+    }
+    AVPacket pkt;
+    if(int ret = av_new_packet(&pkt, 0) < 0)
+    {
+        av_log(NULL, AV_LOG_ERROR, "Failed to new packet");
+        av_packet_unref(&pkt);
+        avcodec_close(frame_codec_ctx);
+        avcodec_free_context(&frame_codec_ctx);
+        return -1;
+    }
+    if(int ret = avcodec_receive_packet(frame_codec_ctx, &pkt) < 0)
+    {
+        av_log(NULL, AV_LOG_ERROR, "Failed to receive packet");
+        av_packet_unref(&pkt);
+        avcodec_close(frame_codec_ctx);
+        avcodec_free_context(&frame_codec_ctx);
+        return -1;
+    }
+    FILE *fp = nullptr;
+    fopen_s(&fp, capture_frame_file_path.c_str(), "wb");
+    if (fp)
+    {
+        fwrite(pkt.data, 1, pkt.size, fp);
+        fclose(fp);
+    }
+    av_packet_unref(&pkt);
+    avcodec_close(frame_codec_ctx);
+    avcodec_free_context(&frame_codec_ctx);
+    return 0;
+}
+int FFmpegPlayer::player_process(const std::string &media_url)
 {
     std::string local_media_url = media_url;
     m_formatCtx = avformat_alloc_context();
@@ -349,7 +424,7 @@ int FFmpegPlayer::process_player_task(const std::string &media_url)
     }
     //initialization finish
     on_stream_avaliable();
-    on_preview_start(media_url, width, height);
+    on_preview_start(media_url, viewport_width, viewport_height);
 
     last_time = std::chrono::high_resolution_clock::now();
     while (av_read_frame(m_formatCtx, m_packet) >= 0)
@@ -361,9 +436,9 @@ int FFmpegPlayer::process_player_task(const std::string &media_url)
             {
                 if (avcodec_send_packet(m_codecCtx, m_packet) >= 0)
                 {
-                    on_packet_received();
                     while (avcodec_receive_frame(m_codecCtx, m_frame) >= 0)
                     {
+                        preprocess_incoming_frame(m_frame);
                         // producer
                         if(frame_consumed.load(std::memory_order_acquire) == true)
                         {
@@ -390,10 +465,11 @@ int FFmpegPlayer::process_player_task(const std::string &media_url)
                             sws_scale(m_swsCtx, m_frame->data, m_frame->linesize, 0, m_codecCtx->height,
                                       m_frame_cache->m_cache->data, m_frame_cache->m_cache->linesize);
 
-                            on_new_frame_avaliable();
+                            on_new_frame_avaliable(m_frame_cache);
                             frame_consumed.store(false, std::memory_order_release);
                         }
                     }
+                    on_packet_received();
                 }
             }
             //audio stream
@@ -463,8 +539,7 @@ int FFmpegPlayer::stream_interrupt_callback(void* opaque)
     return 0;
 }
 
-
-void FFmpegPlayer::on_new_frame_avaliable(){};
+void FFmpegPlayer::on_new_frame_avaliable(std::shared_ptr<FrameCache> m_frame_cache){};
 void FFmpegPlayer::on_new_audio_frame_avaliable(std::shared_ptr<FrameCache> m_frame_cache){};
 void FFmpegPlayer::on_preview_start(const std::string& media_url, const int width, const int height){
     av_log(NULL, AV_LOG_DEBUG, "[%s] %s\n", __FUNCTION__, media_url.c_str());
@@ -489,8 +564,8 @@ void FFmpegPlayer::on_stream_avaliable()
     if(player_status == PLAYER_STATUS_PENDING_START)
     {
         player_status = PLAYER_STATUS_PLAYING;
-        width = m_codecCtx->width;
-        height = m_codecCtx->height;
+        viewport_width = m_codecCtx->width;
+        viewport_height = m_codecCtx->height;
     }
 }
 void FFmpegPlayer::on_packet_received()
@@ -554,6 +629,15 @@ void FFmpegPlayer::on_stream_unavaliable()
         }
     }
 }
+
+void FFmpegPlayer::preprocess_incoming_frame(AVFrame* frame)
+{
+    if(capture_frame_status == CAPTURE_FRAME_ON)
+    {
+        save_frame_as_jpeg(frame, capture_frame_file_path);
+        capture_frame_status = CAPTURE_FRAME_OFF;
+    }
+}
 void FFmpegPlayer::cleanup()
 {
     // Free resources
@@ -611,8 +695,8 @@ void FFmpegPlayer::cleanup()
     }
     m_videoStream = -1;
     m_audioStream = -1;
-    width = 0;
-    height = 0;
+    viewport_width = 0;
+    viewport_height = 0;
 }
 void FFmpegPlayer::cleanup_recorder()
 {
