@@ -1,4 +1,4 @@
-#ifndef QAUDIOPLAYER_H
+﻿#ifndef QAUDIOPLAYER_H
 #define QAUDIOPLAYER_H
 
 #include <memory>
@@ -9,8 +9,7 @@
 
 /**
 * @brief          QAudioPlayer class
-* 音频播放类
-* 音频缓冲区大小需要根据实际情况修改，一般是帧大小的整数倍
+* 音频播放类,音频缓冲区大小需要根据实际情况修改，一般是帧大小的整数倍
 * 缓冲区大延时高稳定性好，缓冲区小实时性好稳定性差
 * @author        Samuel<13321133339@163.com>
 * @date          2023/09/23

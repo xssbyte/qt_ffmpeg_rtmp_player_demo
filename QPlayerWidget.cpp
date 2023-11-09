@@ -1,11 +1,9 @@
-#include <QPlayerWidget.h>
+﻿#include <QPlayerWidget.h>
 #include <QDateTime> // for log
 
 QPlayerWidget::QPlayerWidget(QWidget *parent) : QWidget(parent),
     m_audioPlayer(new QAudioPlayer(8192 * 16))
 {
-    // Set size and background color
-//    qDebug() << "FFmpeg version: " << av_version_info();
     QPalette palette = this->palette();
     palette.setColor(QPalette::Background, Qt::black);
     setAutoFillBackground(true);
@@ -13,7 +11,6 @@ QPlayerWidget::QPlayerWidget(QWidget *parent) : QWidget(parent),
 }
 void QPlayerWidget::paintEvent(QPaintEvent *event)
 {
-//    qDebug() << __FUNCTION__ << QDateTime::currentDateTime().toMSecsSinceEpoch();
     if(!FFmpegPlayer::frame_consumed.load(std::memory_order_acquire))
     {
         QPainter painter(this);
@@ -21,7 +18,11 @@ void QPlayerWidget::paintEvent(QPaintEvent *event)
                 m_frame_cache->m_cache->width,
                 m_frame_cache->m_cache->height,
                 QImage::Format_RGBA8888);
+        //这里拷贝了一帧,根据需求确定使用移动构造还是拷贝构造
+        //如果只需要播放,不需要录像的情况下是单生产者单消费者,可以直接std::move移走帧数据
+        //录像/取帧+播放情况下是单生产者多消费者,必须拷贝,否则录制/取帧的帧为空
         m_image = frame_image.copy();
+        //m_image = std::move(frame_image);
         painter.drawImage(rect(), m_image);
         FFmpegPlayer::frame_consumed.store(true, std::memory_order_release);
     }
@@ -38,15 +39,14 @@ void QPlayerWidget::stop_preview()
 }
 void QPlayerWidget::start_local_record(const std::string &output_file)
 {
-    FFmpegPlayer::start_local_record(output_file);
+    FFmpegPlayer::start_record(output_file);
 }
 void QPlayerWidget::stop_local_record()
 {
-    FFmpegPlayer::stop_local_record();
+    FFmpegPlayer::stop_record();
 }
 
-
-void QPlayerWidget::on_new_frame_avaliable()
+void QPlayerWidget::on_new_frame_avaliable(std::shared_ptr<FrameCache> m_frame_cache)
 {
     //update自动合并多余的重绘
     this->update();

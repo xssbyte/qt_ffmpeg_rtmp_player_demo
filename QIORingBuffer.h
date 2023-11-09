@@ -1,4 +1,4 @@
-#ifndef QIORINGBUFFER_H
+﻿#ifndef QIORINGBUFFER_H
 #define QIORINGBUFFER_H
 
 #include <QIODevice>
@@ -6,8 +6,7 @@
 #include <QAudioOutput>
 /**
 * @brief         QIORingBuffer class
-* 继承QIODevice的环形缓冲区类
-* 固定大小，无锁，无读写指针限制
+* 继承QIODevice的环形缓冲区类,固定大小，无锁，无读写指针限制
 * @author        Samuel<13321133339@163.com>
 * @date          2023/09/23
 */
